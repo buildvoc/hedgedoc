@@ -1,0 +1,58 @@
+/*
+ * SPDX-FileCopyrightText: 2023 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+.side {
+  flex: 1 1 0;
+}
+
+.center {
+  display: flex;
+  justify-content: center;
+  flex: 2 1 0;
+}
+
+.history {
+  flex: 2 2 0;
+}
+
+.navbar {
+  // min-height (not height) so the bar grows to fit its buttons instead of
+  // clipping them when their scaled height exceeds 48px (e.g. Firefox at >=133% zoom).
+  min-height: 48px;
+  background-color: #f0f2f4;
+}
+
+body[data-bs-theme='dark'] .navbar {
+  background-color: #17191c;
+}
+
+@media (max-width: 767.98px) {
+  .side {
+    flex: 0 1 auto;
+  }
+
+  .center {
+    flex: 1 1 0;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+
+  .navbar {
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+
+  // The editor's first two left-side DOM children are branding and the
+  // edit/split/view ButtonGroup. At mobile/50-50 widths nodeBook keeps only
+  // Edit + View in that group and moves the rest of the editor UI to Menu.
+  .mobileEditorLeft > :nth-child(2) > :nth-child(2) {
+    display: none !important;
+  }
+
+  .mobileEditorLeft > :nth-child(n + 3) {
+    display: none !important;
+  }
+}

@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2021 The HedgeDoc developers (see AUTHORS file)
+#
+# SPDX-License-Identifier: CC0-1.0
+
+node_modules
+package-lock.json
+composer.phar
+composer.lock
+.env.*.php
+.env.php
+.DS_Store
+.idea/
+!.idea/copyright/
+!.idea/scopes/
+!.idea/modules.xml
+!.idea/hedgedoc.iml
+!.idea/icon.svg
+Thumbs.db
+npm-debug.log
+newrelic_agent.log
+logs/
+tmp/
+backups/
+*.pid
+*.log
+*.sqlite
+.turbo
+.env
+dist/
+frontend/cypress/downloads
+frontend/cypress/screenshots
+
+# Yarn 2 without zero-installs
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+
+# Rathole proxy configuration
+rathole.toml
+.env.memex
+
+# Local secrets / exports
+.env
+.env.*
+!.env.example
+backend/.env
+docker/.env
+frontend/.env
+frontend/.env.test
+*.backup
+hedgedoc-v1-export-*.tar.gz
+migration-v1/*.jsonl
+migration-v1/uploads.tar.gz
+
+# Local secrets / exports

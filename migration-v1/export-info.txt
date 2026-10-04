@@ -1,0 +1,8 @@
+source=HedgeDoc 1.7.2
+database=PostgreSQL
+notes=394
+revisions=2458
+authors=227
+users=13
+uploads=330
+exported=2026-08-06T17:06:43+00:00

@@ -1,0 +1,22 @@
+{
+    admin off
+}
+
+http://192.168.1.142:8280 {
+    reverse_proxy /realtime 127.0.0.1:3100 {
+        header_up Origin http://192.168.1.142:8180
+    }
+
+    reverse_proxy /api/* 127.0.0.1:3100 {
+        header_up Origin http://192.168.1.142:8180
+    }
+
+    reverse_proxy /public/* 127.0.0.1:3100
+    reverse_proxy /media/* 127.0.0.1:3100
+    reverse_proxy /uploads/* 127.0.0.1:3100
+    reverse_proxy /apidoc/* 127.0.0.1:3100
+
+    reverse_proxy /memex-trails 127.0.0.1:3101
+
+    reverse_proxy /* 127.0.0.1:3201
+}

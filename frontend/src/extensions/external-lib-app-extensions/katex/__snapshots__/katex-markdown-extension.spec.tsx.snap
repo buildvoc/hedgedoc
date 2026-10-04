@@ -1,0 +1,121 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`KaTeX markdown extensions renders a valid block LaTeX expression in a single line 1`] = `
+<div>
+  <p
+    data-testid="katex-block"
+  >
+    <span>
+      This is a mock for lib katex with this parameters:
+    </span>
+    
+
+    <span>
+      
+  
+      <span>
+        tex: \\alpha
+      </span>
+      
+  
+      <span>
+        block: true
+      </span>
+      
+
+    </span>
+  </p>
+  
+
+</div>
+`;
+
+exports[`KaTeX markdown extensions renders a valid block LaTeX expression in multi line 1`] = `
+<div>
+  <p
+    data-testid="katex-block"
+  >
+    <span>
+      This is a mock for lib katex with this parameters:
+    </span>
+    
+
+    <span>
+      
+  
+      <span>
+        tex: 
+\\alpha
+
+      </span>
+      
+  
+      <span>
+        block: true
+      </span>
+      
+
+    </span>
+  </p>
+  
+
+</div>
+`;
+
+exports[`KaTeX markdown extensions renders a valid inline LaTeX expression 1`] = `
+<div>
+  <p>
+    <span
+      data-testid="katex-inline"
+    >
+      <span>
+        This is a mock for lib katex with this parameters:
+      </span>
+      
+
+      <span>
+        
+  
+        <span>
+          tex: \\alpha
+        </span>
+        
+  
+        <span>
+          block: false
+        </span>
+        
+
+      </span>
+    </span>
+  </p>
+  
+
+</div>
+`;
+
+exports[`KaTeX markdown extensions renders an error message for an invalid LaTeX expression 1`] = `
+<div>
+  <p>
+    <span
+      data-testid="katex-inline"
+    >
+      <div>
+        <h3>
+          This is a mock for ApplicationErrorAlert.
+        </h3>
+        Props: 
+        <code>
+          {"className":"d-inline-block"}
+        </code>
+        Children:
+        <div>
+          mocked parseerror
+        </div>
+      </div>
+    </span>
+  </p>
+  
+
+</div>
+`;

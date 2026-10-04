@@ -1,0 +1,121 @@
+{
+  "extends": [
+    "config:js-app",
+    "group:definitelyTyped",
+    "group:socketio",
+    "group:linters",
+    "group:test",
+    "group:reactMonorepo",
+    "group:typescript-eslintMonorepo",
+    "docker:enableMajor",
+    "docker:pinDigests",
+    ":gitSignOff",
+    ":prHourlyLimitNone",
+    ":maintainLockFilesWeekly",
+    ":separateMajorReleases"
+  ],
+  "baseBranchPatterns": [
+    "master",
+    "develop"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "ignorePaths": [
+    "docker/docker-compose.yml"
+  ],
+  "packageRules": [
+    {
+      "groupName": "NestJS packages",
+      "matchPackageNames": [
+        "/^@nestjs//"
+      ]
+    },
+    {
+      "groupName": "Graphviz",
+      "matchPackageNames": [
+        "/d3-graphviz/",
+        "/@hpcc-js/wasm/"
+      ]
+    },
+    {
+      "groupName": "cypress",
+      "matchPackageNames": [
+        "/^@cypress/",
+        "/^cypress/"
+      ]
+    },
+    {
+      "groupName": "vega",
+      "matchPackageNames": [
+        "/vega/",
+        "/vega-embed/",
+        "/vega-lite/"
+      ]
+    },
+    {
+      "groupName": "i18next",
+      "matchPackageNames": [
+        "/i18next/",
+        "/i18next-browser-languagedetector/",
+        "/i18next-http-backend/",
+        "/react-i18next/"
+      ]
+    },
+    {
+      "groupName": "CodeMirror",
+      "matchPackageNames": [
+        "/^@codemirror//",
+        "/@uiw/react-codemirror/"
+      ]
+    },
+    {
+      "groupName": "testing-library",
+      "matchPackageNames": [
+        "/^@testing-library//"
+      ]
+    },
+    {
+      "groupName": "zxcvbn-ts",
+      "matchPackageNames": [
+        "/^@zxcvbn-ts//"
+      ]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/\\.yml$/",
+        "/\\.yaml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))?\\s+\\S+:\\s+\"?(?<currentValue>[^\"]*?)\"?\\s"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/package.json/"
+      ],
+      "matchStrings": [
+        "yjs@(?:npm%3A)?(?<currentValue>[\\d\\.]+)"
+      ],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "yjs"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/package.json/"
+      ],
+      "matchStrings": [
+        "@dicebear/converter@(?:npm%3A)?(?<currentValue>[\\d\\.]+)"
+      ],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@dicebear/converter"
+    }
+  ]
+}

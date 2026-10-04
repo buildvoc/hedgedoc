@@ -1,0 +1,85 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`IconButton correctly uses the onClick callback 1`] = `
+<div>
+  <button
+    class="btn-icon d-inline-flex align-items-stretch btn btn-primary"
+    data-testid="icon-button"
+    type="button"
+  >
+    <span
+      class="icon-part"
+    >
+      BootstrapIconMock_Heart
+    </span>
+    <span
+      class="text-part"
+    >
+      test with onClick
+    </span>
+  </button>
+</div>
+`;
+
+exports[`IconButton renders heart icon 1`] = `
+<div>
+  <button
+    class="btn-icon d-inline-flex align-items-stretch btn btn-primary"
+    data-testid="icon-button"
+    type="button"
+  >
+    <span
+      class="icon-part"
+    >
+      BootstrapIconMock_Heart
+    </span>
+    <span
+      class="text-part"
+    >
+      test
+    </span>
+  </button>
+</div>
+`;
+
+exports[`IconButton renders with additional className 1`] = `
+<div>
+  <button
+    class="btn-icon d-inline-flex align-items-stretch testClass btn btn-primary"
+    data-testid="icon-button"
+    type="button"
+  >
+    <span
+      class="icon-part"
+    >
+      BootstrapIconMock_Heart
+    </span>
+    <span
+      class="text-part"
+    >
+      test with additional className
+    </span>
+  </button>
+</div>
+`;
+
+exports[`IconButton renders with border 1`] = `
+<div>
+  <button
+    class="btn-icon d-inline-flex align-items-stretch with-border btn btn-primary"
+    data-testid="icon-button"
+    type="button"
+  >
+    <span
+      class="icon-part"
+    >
+      BootstrapIconMock_Heart
+    </span>
+    <span
+      class="text-part"
+    >
+      test with border
+    </span>
+  </button>
+</div>
+`;

@@ -1,0 +1,85 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Settings On-Off Button Group accepts custom labels 1`] = `
+<div>
+  <div
+    class="btn-group"
+    role="group"
+  >
+    <button
+      class="btn btn-secondary"
+      data-testid="onOffButtonGroupOn"
+      name="test"
+      title="test.custom-on"
+      type="radio"
+    >
+      test.custom-on
+    </button>
+    <button
+      class="btn btn-outline-secondary"
+      data-testid="onOffButtonGroupOff"
+      name="test"
+      title="test.custom-off"
+      type="radio"
+    >
+      test.custom-off
+    </button>
+  </div>
+</div>
+`;
+
+exports[`Settings On-Off Button Group can switch value: defaults to off 1`] = `
+<div>
+  <div
+    class="btn-group"
+    role="group"
+  >
+    <button
+      class="btn btn-outline-secondary"
+      data-testid="onOffButtonGroupOn"
+      name="test"
+      title="common.on"
+      type="radio"
+    >
+      common.on
+    </button>
+    <button
+      class="btn btn-secondary"
+      data-testid="onOffButtonGroupOff"
+      name="test"
+      title="common.off"
+      type="radio"
+    >
+      common.off
+    </button>
+  </div>
+</div>
+`;
+
+exports[`Settings On-Off Button Group can switch value: is set to on 1`] = `
+<div>
+  <div
+    class="btn-group"
+    role="group"
+  >
+    <button
+      class="btn btn-secondary"
+      data-testid="onOffButtonGroupOn"
+      name="test"
+      title="common.on"
+      type="radio"
+    >
+      common.on
+    </button>
+    <button
+      class="btn btn-outline-secondary"
+      data-testid="onOffButtonGroupOff"
+      name="test"
+      title="common.off"
+      type="radio"
+    >
+      common.off
+    </button>
+  </div>
+</div>
+`;

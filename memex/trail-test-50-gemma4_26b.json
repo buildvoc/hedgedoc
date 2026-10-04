@@ -1,0 +1,72 @@
+{
+  "trails": [
+    {
+      "name": "HedgeDoc User & Admin Guide",
+      "aliases": [
+        "features",
+        "yaml-metadata",
+        "slide-example",
+        "vdb37TEa",
+        "release-notes"
+      ],
+      "reason": "A progression from understanding basic features and advanced syntax to managing presentation modes, deployment/backups, and tracking software updates.",
+      "confidence": 0.95
+    },
+    {
+      "name": "Knowledge Organization Systems (KOS) Workflow",
+      "aliases": [
+        "ylTEx78w2",
+        "zLyXXXp9g",
+        "oSfW4DDE",
+        "xTa4FP8MA",
+        "1meYA902u",
+        "2gfs9f_Ri"
+      ],
+      "reason": "A path through the theoretical foundations of KOS, workshop experiences for VocBench, practical data import tutorials, and final visualization using Skosmos.",
+      "confidence": 0.92
+    },
+    {
+      "name": "Releasetool Development & Modeling",
+      "aliases": [
+        "WljNJ-JNz",
+        "kfLMlRlAr",
+        "AXefTNn4n",
+        "QnBCD0iDu"
+      ],
+      "reason": "Moving from the theory of Entity Relationship Diagrams and the Mermaid tool to specific ER diagrams in the Releasetool handbook and its technical API architecture.",
+      "confidence": 0.88
+    },
+    {
+      "name": "Releasetool User Review Process",
+      "aliases": [
+        "ksmG6uPDX",
+        "EQDAmPrvg",
+        "DMJvQOcA"
+      ],
+      "reason": "A functional guide for a reviewer, starting from the high-level workflow steps to specific 'how-to' instructions and navigating the user interface.",
+      "confidence": 0.94
+    },
+    {
+      "name": "Building Safety & Semantic Information Management",
+      "aliases": [
+        "sLRzRzzGO",
+        "cJ3ajMDfo",
+        "akFtEa-fs",
+        "mJUvDviLx"
+      ],
+      "reason": "A path connecting the regulatory 'Golden Thread' of building information to specific research projects using Knowledge Graphs and semantic technologies for compliance.",
+      "confidence": 0.85
+    },
+    {
+      "name": "Automated Text Analytics Pipeline",
+      "aliases": [
+        "XwF80gG8c",
+        "W6ofnHjV9",
+        "hGtzK1xNi",
+        "7Y4FBUjIx"
+      ],
+      "reason": "A technical path through setting up Annif (commands and handbook) and integrating it into a larger ecosystem involving EPrints and Releasetool.",
+      "confidence": 0.9
+    }
+  ]
+}

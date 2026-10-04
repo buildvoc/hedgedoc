@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2021 The HedgeDoc developers (see AUTHORS file)
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Lint and check format
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request_target:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+
+permissions:
+  contents: read
+
+env:
+  NODEJS_VERSION: 24
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint files and check formatting
+    if: "(github.event_name == 'pull_request_target') == github.event.pull_request.head.repo.fork"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Setup node
+        uses: ./.github/actions/setup-node
+        with:
+          NODEJS_VERSION: ${{ env.NODEJS_VERSION }}
+
+      - name: Run Oxlint
+        run: yarn lint
+        shell: bash
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_API: ${{ vars.TURBO_API }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+      - name: Run Oxfmt
+        run: yarn format
+        shell: bash
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_API: ${{ vars.TURBO_API }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}

@@ -1,0 +1,53 @@
+{
+  "created_docs": [
+    {
+      "alias": "liphook-car-boot-2026-09-20",
+      "title": "Community Car Boot Sale — 20 September 2026"
+    },
+    {
+      "alias": "liphook-village-market-2026-09-20",
+      "title": "Liphook Village Market — 20 September 2026"
+    },
+    {
+      "alias": "hollycombe-glow-night-2026-09-26",
+      "title": "Glow Night - Festival of Mechanical Music"
+    },
+    {
+      "alias": "back-to-land-girls-liphook-2026-10-04",
+      "title": "Back to the Land Girls by Badapple Theatre"
+    }
+  ],
+  "trails": [
+    {
+      "name": "Liphook Area Event Timeline (Sept–Oct 2026)",
+      "member_ids": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "members": [
+        "liphook-car-boot-2026-09-20",
+        "liphook-village-market-2026-09-20",
+        "hollycombe-glow-night-2026-09-26",
+        "back-to-land-girls-liphook-2026-10-04"
+      ],
+      "reason": "A chronological progression of upcoming local events in the Liphook area, starting with the community markets on September 20th, moving to the music festival on September 26th, and ending with the theatre performance on October 4th.",
+      "confidence": 0.98
+    },
+    {
+      "name": "Upcoming Cultural Performances",
+      "member_ids": [
+        3,
+        4
+      ],
+      "members": [
+        "hollycombe-glow-night-2026-09-26",
+        "back-to-land-girls-liphook-2026-10-04"
+      ],
+      "reason": "A temporal sequence of scheduled musical and theatrical performances in the region.",
+      "confidence": 0.95
+    }
+  ],
+  "model": "gemma4:26b"
+}

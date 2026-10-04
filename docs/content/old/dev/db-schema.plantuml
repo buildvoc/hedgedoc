@@ -1,0 +1,188 @@
+@startuml
+hide circle
+skinparam nodesep 60
+
+entity "note" {
+  *id : uuid <<generated>>
+  --
+  publicId: text
+  *viewCount : number
+  *ownerId : uuid <<FK user>>
+  description: text
+  title: text
+}
+
+entity "alias" {
+  *id: uuid <<generated>>
+  ---
+  name: text
+  ' If the alias is primary. Can be NULL, which means it's not primary
+  primary: boolean
+}
+
+entity "user" {
+  *id : uuid <<generated>>
+  --
+  *userName : text
+  *displayName : text
+  *createdAt : date
+  *updatedAt : date
+  photo : text
+  email : text
+}
+
+entity "auth_token"{
+  *id : number <<generated>>
+  --
+  *userId : uuid
+  *keyId: text
+  *accessToken : text
+  *label: text
+  *createdAt: date
+  lastUsed: number
+  validUntil: number
+}
+
+entity "identity" {
+  *id : number
+  --
+  *userId : uuid <<FK user>>
+  *providerType: text
+  ' Identifies the external login provider and is set in the config
+  providerName : text
+  *syncSource : boolean
+  *createdAt : date
+  *updatedAt : date
+  ' The unique identifier of a user from the login provider
+  providerUserId : text
+  ' Token used to access the OAuth provider in the users name. Can be NULL
+  oauthAccessToken : text
+  ' Password hash. Can be NULL
+  passwordHash : text
+}
+
+entity "session" {
+  *id : text
+  --
+  *expiredAt : number
+  *json : text
+}
+
+
+entity "revision" {
+  *id : number <<generated>>
+  --
+  *noteId : uuid <<FK note>>
+  *content : text
+  *patch : text
+  *createdAt : date
+  *length : number
+}
+
+entity "authorship" {
+  *id : uuid <<generated>>
+  --
+  *authorId : uuid <FK user>>
+  *startPos : number
+  *endPos : number
+  *createdAt : date
+  *updatedAt : date
+}
+
+entity "revision_authorship" {
+  *revisionId : number <<FK revision>>
+  *authorshipId : uuid <<FK authorship>>
+}
+
+entity "author" {
+  *id : number <<generated>>
+  --
+  *color : text
+  sessionID : text <<FK session>>
+  userId : uuid <<FK user>>
+}
+
+
+entity "note_user_permission" {
+  *userId : uuid <<FK user>>
+  *noteId : uuid <<FK note>>
+  --
+  *canEdit : boolean
+}
+
+entity "group" {
+  *id : number <<generated>>
+  --
+  *name : text <<unique>>
+  *displayName : text
+  ' Is set to denote a special group
+  ' Special groups are used to map the old share settings like "everyone can edit"
+  ' or "logged in users can view" to the group permission system
+  *special : boolean
+  }
+
+entity "note_group_permission" {
+  *groupId : number <<FK group>>
+  *noteId : uuid <<FK note>>
+  --
+  *canEdit : boolean
+}
+
+entity "group_members_user" {
+  *group : number <<FK group>>
+  *member : uuid <<FK user>>
+}
+
+entity "tag" {
+  *id: number <<generated>>
+  *name: text
+}
+
+entity "media_upload" {
+  *id : text <<unique>>
+  --
+  *noteId : uuid <<FK note>>
+  *userId : uuid <<FK user>>
+  *backendType: text
+  *fileUrl: text
+  backendData: text
+  *createdAt : date
+}
+
+entity "history_entry" {
+  *noteId : uuid <<FK note>>
+  *userId : uuid <<FK user>>
+  --
+  *pinStatus: boolean
+  *updatedAt: date
+}
+
+user "0..1" -- "0..*" note: owner
+user "1" -u- "1..*" identity
+user "1" -l- "1..*" auth_token: authTokens
+user "1" -r- "1..*" session
+user "1" -- "0..*" media_upload
+user "1" -- "0..*" history_entry
+user "0..*" -- "0..*" note
+user "0..1" -- "0..*" author
+
+author "1" -- "0..*" authorship
+author "1" -u- "0..*" session
+
+revision "0..*" -- "0..*" authorship
+(revision, authorship) .. revision_authorship
+
+media_upload "0..*"  -- "1" note
+note "1" -d- "1..*" revision
+note "1" - "0..*" history_entry
+note "0..*" -l- "0..*" tag
+note "1" - "0..*" alias
+note "0..*" -- "0..*" group
+user "1..*" -- "0..*" group
+
+user "0..*" -- "0..*" note
+(user, note) . note_user_permission
+(note, group) . note_group_permission
+(user, group) . group_members_user
+
+@enduml

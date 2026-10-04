@@ -1,0 +1,148 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { removeGroupPermission, setGroupPermission } from '../../../../../../api/permissions'
+import { useApplicationState } from '../../../../../../hooks/common/use-application-state'
+import { useTranslatedText } from '../../../../../../hooks/common/use-translated-text'
+import { setNotePermissionsFromServer } from '../../../../../../redux/note-details/methods'
+import { IconButton } from '../../../../../common/icon-button/icon-button'
+import { useUiNotifications } from '../../../../../notifications/ui-notification-boundary'
+import type { PermissionDisabledProps } from './permission-disabled.prop'
+import { PermissionLevel, SpecialGroup } from '@hedgedoc/commons'
+import React, { useCallback, useMemo } from 'react'
+import { ToggleButtonGroup } from 'react-bootstrap'
+import { Eye as IconEye, Pencil as IconPencil, SlashCircle as IconSlashCircle } from 'react-bootstrap-icons'
+import { useTranslation } from 'react-i18next'
+import { PermissionInconsistentAlert } from './permission-inconsistent-alert'
+import { cypressId } from '../../../../../../utils/cypress-attribute'
+import { ErrorToI18nKeyMapper } from '../../../../../../api/common/error-to-i18n-key-mapper'
+
+export interface PermissionEntrySpecialGroupProps {
+  level: PermissionLevel
+  type: SpecialGroup
+  inconsistent?: boolean
+}
+
+/**
+ * Permission entry that represents one of the built-in special groups.
+ *
+ * @param level The access level that is currently set for the group.
+ * @param type The type of the special group. Must be either {@link SpecialGroup.EVERYONE} or {@link SpecialGroup.LOGGED_IN}.
+ * @param disabled If the user is not the owner, functionality is disabled.
+ * @param inconsistent Whether to show the inconsistency alert icon or not
+ */
+export const PermissionEntrySpecialGroup: React.FC<PermissionEntrySpecialGroupProps & PermissionDisabledProps> = ({
+  level,
+  type,
+  disabled,
+  inconsistent
+}) => {
+  const noteAlias = useApplicationState((state) => state.noteDetails?.primaryAlias)
+  const { t } = useTranslation()
+  const { showErrorNotificationBuilder } = useUiNotifications()
+
+  const onSetEntryReadOnly = useCallback(() => {
+    if (!noteAlias) {
+      return
+    }
+    setGroupPermission(noteAlias, type, false)
+      .then((updatedPermissions) => {
+        setNotePermissionsFromServer(updatedPermissions)
+      })
+      .catch((error) => {
+        const errorI18nKey = new ErrorToI18nKeyMapper(error, 'editor.modal.permissions.error')
+          .withHttpCode(404, 'missingUser')
+          .withHttpCode(403, 'missingPermissions')
+          .orFallbackI18nKey('other')
+        showErrorNotificationBuilder(errorI18nKey)(error)
+      })
+  }, [noteAlias, showErrorNotificationBuilder, type])
+
+  const onSetEntryWriteable = useCallback(() => {
+    if (!noteAlias) {
+      return
+    }
+    setGroupPermission(noteAlias, type, true)
+      .then((updatedPermissions) => {
+        setNotePermissionsFromServer(updatedPermissions)
+      })
+      .catch((error) => {
+        const errorI18nKey = new ErrorToI18nKeyMapper(error, 'editor.modal.permissions.error')
+          .withHttpCode(404, 'missingUser')
+          .withHttpCode(403, 'missingPermissions')
+          .orFallbackI18nKey('other')
+        showErrorNotificationBuilder(errorI18nKey)(error)
+      })
+  }, [noteAlias, showErrorNotificationBuilder, type])
+
+  const onSetEntryDenied = useCallback(() => {
+    if (!noteAlias) {
+      return
+    }
+    removeGroupPermission(noteAlias, type)
+      .then((updatedPermissions) => {
+        setNotePermissionsFromServer(updatedPermissions)
+      })
+      .catch((error) => {
+        const errorI18nKey = new ErrorToI18nKeyMapper(error, 'editor.modal.permissions.error')
+          .withHttpCode(404, 'missingUser')
+          .withHttpCode(403, 'missingPermissions')
+          .orFallbackI18nKey('other')
+        showErrorNotificationBuilder(errorI18nKey)(error)
+      })
+  }, [noteAlias, showErrorNotificationBuilder, type])
+
+  const name = useMemo(() => {
+    switch (type) {
+      case SpecialGroup.LOGGED_IN:
+        return t('editor.modal.permissions.allLoggedInUser')
+      case SpecialGroup.EVERYONE:
+        return t('editor.modal.permissions.allUser')
+    }
+  }, [type, t])
+
+  const translateOptions = useMemo(() => ({ name }), [name])
+  const denyGroupText = useTranslatedText('editor.modal.permissions.denyGroup', translateOptions)
+  const viewOnlyGroupText = useTranslatedText('editor.modal.permissions.viewOnlyGroup', translateOptions)
+  const editGroupText = useTranslatedText('editor.modal.permissions.editGroup', translateOptions)
+
+  return (
+    <li className={'list-group-item d-flex flex-row justify-content-between align-items-center'}>
+      <span>{name}</span>
+      <div>
+        <PermissionInconsistentAlert show={inconsistent ?? false} />
+        <ToggleButtonGroup type='radio' name='edit-mode'>
+          <IconButton
+            icon={IconSlashCircle}
+            title={denyGroupText}
+            variant={level === PermissionLevel.DENY ? 'secondary' : 'outline-secondary'}
+            onClick={onSetEntryDenied}
+            disabled={disabled}
+            className={'p-1'}
+            {...cypressId(`permission-setting-deny${type}`)}
+          />
+          <IconButton
+            icon={IconEye}
+            title={viewOnlyGroupText}
+            variant={level === PermissionLevel.READ ? 'secondary' : 'outline-secondary'}
+            onClick={onSetEntryReadOnly}
+            disabled={disabled}
+            className={'p-1'}
+            {...cypressId(`permission-setting-read${type}`)}
+          />
+          <IconButton
+            icon={IconPencil}
+            title={editGroupText}
+            variant={level === PermissionLevel.WRITE ? 'secondary' : 'outline-secondary'}
+            onClick={onSetEntryWriteable}
+            disabled={disabled}
+            className={'p-1'}
+            {...cypressId(`permission-setting-write${type}`)}
+          />
+        </ToggleButtonGroup>
+      </div>
+    </li>
+  )
+}

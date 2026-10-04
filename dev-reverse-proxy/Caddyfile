@@ -1,0 +1,30 @@
+#
+# SPDX-FileCopyrightText: 2024 The HedgeDoc developers (see AUTHORS file)
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+# Allow private ranges as proxies, for example when running Caddy behind another reverse proxy
+# Otherwise Caddy strips the required X-Forwarded-Proto and X-Forwarded-Host headers
+# This is a common scenario when exposing a local dev setup to someone else
+{
+    servers {
+        trusted_proxies static private_ranges
+    }
+}
+
+# Use port 8080 by default, but allow overriding using CADDY_HOST env variable
+{$CADDY_HOST::8080} {
+
+    log {
+	    output stdout
+        level WARN
+	    format console
+    }
+
+    reverse_proxy /realtime http://localhost:{$HD_BACKEND_PORT:3000}
+    reverse_proxy /api/* http://localhost:{$HD_BACKEND_PORT:3000}
+    reverse_proxy /public/* http://localhost:{$HD_BACKEND_PORT:3000}
+    reverse_proxy /media/* http://localhost:{$HD_BACKEND_PORT:3000}
+    reverse_proxy /* http://localhost:{$HD_FRONTEND_PORT:3001}
+}

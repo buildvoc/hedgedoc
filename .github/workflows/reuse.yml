@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2021 The HedgeDoc developers (see AUTHORS file)
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: REUSE Compliance Check
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+
+jobs:
+  reuse:
+    runs-on: ubuntu-latest
+    container:
+      image: fsfe/reuse:4.0.3@sha256:7e0ca22c55f73947d9ebc77deacc79357deff0c6abc63acdd87222f633718919
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Run linter
+        run: reuse lint

@@ -1,0 +1,66 @@
+/*
+ * SPDX-FileCopyrightText: 2026 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { DeleteApiRequestBuilder } from '../common/api-request-builder/delete-api-request-builder'
+import { PostApiRequestBuilder } from '../common/api-request-builder/post-api-request-builder'
+import { PutApiRequestBuilder } from '../common/api-request-builder/put-api-request-builder'
+import type { AliasCreateInterface, AliasUpdateInterface } from '@hedgedoc/commons'
+import { GetApiRequestBuilder } from '../common/api-request-builder/get-api-request-builder'
+import type { NoteAliasesInterface } from '@hedgedoc/commons'
+
+/**
+ * Fetches the list of available aliases for a given note identified by one known alias.
+ *
+ * @param noteAlias An existing alias for a note.
+ * @return Information about the available aliases.
+ * @throws {Error} when the API request wasn't successful
+ */
+export const getAllAliases = async (noteAlias: string): Promise<NoteAliasesInterface> => {
+  const response = await new GetApiRequestBuilder<NoteAliasesInterface>(`alias/${noteAlias}`).sendRequest()
+  return response.asParsedJsonObject()
+}
+
+/**
+ * Adds an alias to an existing note.
+ *
+ * @param noteAlias The note id or an existing alias for a note.
+ * @param newAlias The new alias.
+ * @return Information about the newly created alias.
+ * @throws {Error} when the api request wasn't successful
+ */
+export const addAlias = async (noteAlias: string, newAlias: string): Promise<void> => {
+  await new PostApiRequestBuilder<void, AliasCreateInterface>('alias')
+    .withJsonBody({
+      noteAlias,
+      newAlias
+    })
+    .sendRequest()
+}
+
+/**
+ * Marks a given alias as the primary one for a note.
+ * The former primary alias should be marked as non-primary by the backend automatically.
+ *
+ * @param alias The alias to mark as primary for its corresponding note.
+ * @return The updated information about the alias.
+ * @throws {Error} when the api request wasn't successfull
+ */
+export const markAliasAsPrimary = async (alias: string): Promise<void> => {
+  await new PutApiRequestBuilder<void, AliasUpdateInterface>('alias/' + alias)
+    .withJsonBody({
+      primaryAlias: true
+    })
+    .sendRequest()
+}
+
+/**
+ * Removes a given alias from its corresponding note.
+ *
+ * @param alias The alias to remove from its note.
+ * @throws {Error} when the api request wasn't successful.
+ */
+export const deleteAlias = async (alias: string): Promise<void> => {
+  await new DeleteApiRequestBuilder('alias/' + alias).sendRequest()
+}

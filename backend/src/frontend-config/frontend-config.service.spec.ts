@@ -1,0 +1,279 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { describe, it, expect } from '@jest/globals';
+import { AuthProviderType, PermissionLevel, PermissionLevelNames } from '@hedgedoc/commons';
+import { ConfigModule, registerAs } from '@nestjs/config';
+import { Test, TestingModule } from '@nestjs/testing';
+import { URL } from 'url';
+
+import { AppConfig } from '../config/app.config';
+import { AuthConfig } from '../config/auth.config';
+import { CustomizationConfig } from '../config/customization.config';
+import { ExternalServicesConfig } from '../config/external-services.config';
+import { Loglevel } from '../config/loglevel.enum';
+import { NoteConfig } from '../config/note.config';
+import { LoggerModule } from '../logger/logger.module';
+import { getServerVersionFromPackageJson } from '../utils/server-version';
+import { FrontendConfigService } from './frontend-config.service';
+
+/* oxlint-disable jest/no-conditional-expect */
+describe('FrontendConfigService', () => {
+  const domain = 'http://md.example.com';
+  const emptyAuthConfig: AuthConfig = {
+    allowProfileEdits: true,
+    allowChooseUsername: true,
+    syncSource: undefined,
+    session: {
+      secret: 'my-secret',
+      lifetime: 1209600000,
+    },
+    local: {
+      enableLogin: false,
+      enableRegister: false,
+      minimalPasswordStrength: 2,
+    },
+    ldap: [],
+    oidc: [],
+  };
+
+  describe('getAuthProviders', () => {
+    const ldap: AuthConfig['ldap'] = [
+      {
+        identifier: 'ldapTestIdentifier',
+        providerName: 'ldapTestName',
+        url: 'ldapTestUrl',
+        bindDn: 'ldapTestBindDn',
+        bindCredentials: 'ldapTestBindCredentials',
+        searchBase: 'ldapTestSearchBase',
+        searchFilter: 'ldapTestSearchFilter',
+        searchAttributes: ['ldapTestSearchAttribute'],
+        userIdField: 'ldapTestUserId',
+        emailField: 'ldapEmailField',
+        displayNameField: 'ldapTestDisplayName',
+        profilePictureField: 'ldapTestProfilePicture',
+        tlsCaCerts: ['ldapTestTlsCa'],
+        tlsRejectUnauthorized: false,
+      },
+    ];
+    const oidc: AuthConfig['oidc'] = [
+      {
+        identifier: 'oidcTestIdentifier',
+        providerName: 'oidcTestProviderName',
+        issuer: 'oidcTestIssuer',
+        clientId: 'oidcTestId',
+        clientSecret: 'oidcTestSecret',
+        scope: 'openid profile email',
+        userIdField: '',
+        usernameField: '',
+        displayNameField: '',
+        profilePictureField: '',
+        emailField: '',
+        enableRegistration: true,
+      },
+    ];
+    for (const [providerType, authConfigConfigured] of [
+      ['ldap', ldap],
+      ['oidc', oidc],
+    ] as const) {
+      it(`works with ${JSON.stringify(authConfigConfigured)}`, async () => {
+        const appConfig: AppConfig = {
+          baseUrl: domain,
+          rendererBaseUrl: 'https://renderer.example.org',
+          backendPort: 3000,
+          backendBindIp: '127.0.0.1',
+          log: {
+            level: Loglevel.ERROR,
+            showTimestamp: false,
+          },
+        };
+        const authConfig: AuthConfig = {
+          ...emptyAuthConfig,
+          [providerType]: authConfigConfigured,
+        };
+        const testingModule: TestingModule = await Test.createTestingModule({
+          imports: [
+            ConfigModule.forRoot({
+              isGlobal: true,
+              load: [
+                registerAs('appConfig', () => appConfig),
+                registerAs('authConfig', () => authConfig),
+                registerAs('customizationConfig', () => {
+                  return {
+                    branding: {
+                      customName: null,
+                      customLogo: null,
+                    },
+                    urls: {},
+                  };
+                }),
+                registerAs('externalServicesConfig', () => {
+                  return {};
+                }),
+                registerAs('noteConfig', () => {
+                  return {
+                    forbiddenAliases: [],
+                    maxLength: 200,
+                    permissions: {
+                      maxGuestLevel: PermissionLevel.FULL,
+                      default: {
+                        everyone: PermissionLevelNames[PermissionLevel.READ],
+                        loggedIn: PermissionLevelNames[PermissionLevel.WRITE],
+                      },
+                    },
+                    revisionRetentionDays: 0,
+                    persistInterval: 10,
+                  } as unknown as NoteConfig;
+                }),
+              ],
+            }),
+            LoggerModule,
+          ],
+          providers: [FrontendConfigService],
+        }).compile();
+        const service = testingModule.get(FrontendConfigService);
+        const config = await service.getFrontendConfig();
+        if (authConfig.local.enableLogin) {
+          expect(config.authProviders).toContainEqual({
+            type: AuthProviderType.LOCAL,
+          });
+        }
+        expect(
+          config.authProviders.filter((provider) => provider.type === AuthProviderType.LDAP).length,
+        ).toEqual(authConfig.ldap.length);
+        expect(
+          config.authProviders.filter((provider) => provider.type === AuthProviderType.OIDC).length,
+        ).toEqual(authConfig.oidc.length);
+        if (authConfig.ldap.length > 0) {
+          expect(
+            config.authProviders.find((provider) => provider.type === AuthProviderType.LDAP),
+          ).toEqual({
+            type: AuthProviderType.LDAP,
+            providerName: authConfig.ldap[0].providerName,
+            identifier: authConfig.ldap[0].identifier,
+            theme: null,
+          });
+        }
+        if (authConfig.oidc.length > 0) {
+          expect(
+            config.authProviders.find((provider) => provider.type === AuthProviderType.OIDC),
+          ).toEqual({
+            type: AuthProviderType.OIDC,
+            providerName: authConfig.oidc[0].providerName,
+            identifier: authConfig.oidc[0].identifier,
+            theme: null,
+          });
+        }
+      });
+    }
+  });
+
+  const maxDocumentLength = 100000;
+  const enableRegister = true;
+  const imageProxy = 'https://imageProxy.example.com';
+  const customName = 'Test Branding Name';
+
+  let index = 1;
+  for (const customLogo of [null, 'https://example.com/logo.png']) {
+    for (const privacyLink of [null, 'https://example.com/privacy']) {
+      for (const termsOfUseLink of [null, 'https://example.com/terms']) {
+        for (const imprintLink of [null, 'https://example.com/imprint']) {
+          for (const plantUmlServer of [null, 'https://plantuml.example.com']) {
+            it(`combination #${index} works`, async () => {
+              const appConfig: AppConfig = {
+                baseUrl: domain,
+                rendererBaseUrl: 'https://renderer.example.org',
+                backendPort: 3000,
+                backendBindIp: '127.0.0.1',
+                log: {
+                  level: Loglevel.ERROR,
+                  showTimestamp: false,
+                },
+              };
+              const authConfig: AuthConfig = {
+                ...emptyAuthConfig,
+                local: {
+                  enableLogin: true,
+                  enableRegister,
+                  minimalPasswordStrength: 3,
+                },
+              };
+              const customizationConfig: CustomizationConfig = {
+                branding: {
+                  customName: customName,
+                  customLogo: customLogo,
+                },
+                urls: {
+                  privacy: privacyLink,
+                  termsOfUse: termsOfUseLink,
+                  imprint: imprintLink,
+                },
+              };
+              const externalServicesConfig: ExternalServicesConfig = {
+                plantumlServer: plantUmlServer,
+                imageProxy: imageProxy,
+              };
+              const noteConfig: NoteConfig = {
+                forbiddenAliases: [],
+                maxLength: maxDocumentLength,
+                permissions: {
+                  default: {
+                    everyone: PermissionLevel.READ,
+                    loggedIn: PermissionLevel.WRITE,
+                    publiclyVisible: false,
+                  },
+                  maxGuestLevel: PermissionLevel.FULL,
+                },
+                revisionRetentionDays: 0,
+                persistInterval: 10,
+              };
+              const module: TestingModule = await Test.createTestingModule({
+                imports: [
+                  ConfigModule.forRoot({
+                    isGlobal: true,
+                    load: [
+                      registerAs('appConfig', () => appConfig),
+                      registerAs('authConfig', () => authConfig),
+                      registerAs('customizationConfig', () => customizationConfig),
+                      registerAs('externalServicesConfig', () => externalServicesConfig),
+                      registerAs('noteConfig', () => noteConfig),
+                    ],
+                  }),
+                  LoggerModule,
+                ],
+                providers: [FrontendConfigService],
+              }).compile();
+
+              const service = module.get(FrontendConfigService);
+              const config = await service.getFrontendConfig();
+              expect(config.allowRegister).toEqual(enableRegister);
+              expect(config.guestAccess).toEqual(noteConfig.permissions.maxGuestLevel);
+              expect(config.branding.name).toEqual(customName);
+              expect(config.branding.logo).toEqual(
+                customLogo !== null ? new URL(customLogo).toString() : null,
+              );
+              expect(config.maxDocumentLength).toEqual(maxDocumentLength);
+              expect(config.plantUmlServer).toEqual(
+                plantUmlServer !== null ? new URL(plantUmlServer).toString() : null,
+              );
+              expect(config.specialUrls.imprint).toEqual(
+                imprintLink !== null ? new URL(imprintLink).toString() : null,
+              );
+              expect(config.specialUrls.privacy).toEqual(
+                privacyLink !== null ? new URL(privacyLink).toString() : null,
+              );
+              expect(config.specialUrls.termsOfUse).toEqual(
+                termsOfUseLink !== null ? new URL(termsOfUseLink).toString() : null,
+              );
+              expect(config.useImageProxy).toEqual(!!imageProxy);
+              expect(config.version).toEqual(await getServerVersionFromPackageJson());
+            });
+            index += 1;
+          }
+        }
+      }
+    }
+  }
+});

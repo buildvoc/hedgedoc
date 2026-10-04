@@ -1,0 +1,87 @@
+/*
+ * SPDX-FileCopyrightText: 2023 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { useApplicationState } from '../../../hooks/common/use-application-state'
+import { useTrimmedNoteMarkdownContentWithoutFrontmatter } from '../../../hooks/common/use-trimmed-note-markdown-content-without-frontmatter'
+import { setRendererStatus } from '../../../redux/renderer-status/methods'
+import type { RendererIframeProps } from '../../common/renderer-iframe/renderer-iframe'
+import { RendererIframe } from '../../common/renderer-iframe/renderer-iframe'
+import { useSendToRenderer } from '../../render-page/window-post-message-communicator/hooks/use-send-to-renderer'
+import {
+  CommunicationMessageType,
+  RendererType
+} from '../../render-page/window-post-message-communicator/rendering-message'
+import { extractDoclingDocument } from './docling-document'
+import { DoclingRendererPane } from './docling-renderer-pane'
+import { useOnScrollWithLineOffset } from './hooks/use-on-scroll-with-line-offset'
+import { useScrollStateWithoutLineOffset } from './hooks/use-scroll-state-without-line-offset'
+import { NoteType } from '@hedgedoc/commons'
+import React, { Fragment, useMemo } from 'react'
+import { FullscreenButton } from '../../render-page/fullscreen-button/fullscreen-button'
+import type { RevealOptions } from 'reveal.js'
+
+export type RendererPaneProps = Omit<
+  RendererIframeProps,
+  'markdownContentLines' | 'rendererType' | 'onTaskCheckedChange'
+>
+
+/**
+ * Renders the markdown content from the global application state with the iframe renderer.
+ * DoclingDocument notes are rendered with Docling's document renderer instead.
+ *
+ * @param scrollState The {@link ScrollState} that should be sent to the renderer
+ * @param onScroll A callback that is executed when the view in the rendered is scrolled
+ * @param props Every property from the {@link RendererIframe} except the markdown content
+ */
+export const RendererPane: React.FC<RendererPaneProps> = ({ scrollState, onScroll, ...props }) => {
+  const trimmedContentLines = useTrimmedNoteMarkdownContentWithoutFrontmatter()
+  const fullContentLines = useApplicationState((state) => state.noteDetails?.markdownContent.lines ?? [])
+  const noteType = useApplicationState((state) => state.noteDetails?.frontmatter.type)
+  const slideOptions = useApplicationState((state) => state.noteDetails?.frontmatter.slideOptions)
+  const rendererReady = useApplicationState((state) => state.rendererStatus.rendererReady)
+  const adjustedOnScroll = useOnScrollWithLineOffset(onScroll ?? null)
+  const adjustedScrollState = useScrollStateWithoutLineOffset(scrollState ?? null)
+  const doclingDocument = useMemo(
+    () => extractDoclingDocument(fullContentLines),
+    [fullContentLines]
+  )
+  const previewSlideOptions = useMemo<RevealOptions | null>(() => {
+    return noteType === NoteType.SLIDE ? { ...slideOptions, controls: false } : null
+  }, [noteType, slideOptions])
+
+  useSendToRenderer(
+    useMemo(() => {
+      return previewSlideOptions === null
+        ? null
+        : {
+            type: CommunicationMessageType.SET_SLIDE_OPTIONS,
+            slideOptions: previewSlideOptions
+          }
+    }, [previewSlideOptions]),
+    rendererReady
+  )
+
+  if (!noteType) {
+    return null
+  }
+
+  if (doclingDocument.detected) {
+    return <DoclingRendererPane document={doclingDocument.document} />
+  }
+
+  return (
+    <Fragment>
+      <RendererIframe
+        {...props}
+        onScroll={adjustedOnScroll}
+        scrollState={adjustedScrollState}
+        rendererType={noteType === NoteType.SLIDE ? RendererType.SLIDESHOW : RendererType.DOCUMENT}
+        markdownContentLines={trimmedContentLines}
+        onRendererStatusChange={setRendererStatus}
+      />
+      <FullscreenButton linkToEditor={false} />
+    </Fragment>
+  )
+}

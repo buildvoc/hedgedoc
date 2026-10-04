@@ -1,0 +1,62 @@
+{
+  "trails": [
+    {
+      "name": "Subject Indexing Fundamentals",
+      "aliases": [
+        "Itb512e32",
+        "rXrudLjbo",
+        "wHtEzyfye",
+        "P0M272xo2"
+      ],
+      "reason": "Progresses from the basic definition of subject indexing to automated overviews, specific NLP techniques like lemmatization, and specialized backend implementations.",
+      "confidence": 0.95
+    },
+    {
+      "name": "Annif Training Pipeline",
+      "aliases": [
+        "W6ofnHjV9",
+        "POlJctUmk",
+        "BO55bWQ7i",
+        "QzLfqFnGX",
+        "aFyry03x7",
+        "Z6Wxp-AVc"
+      ],
+      "reason": "A technical workflow starting from the handbook/setup, through corpus preparation and backend configuration, to training neural ensembles and evaluating results.",
+      "confidence": 0.98
+    },
+    {
+      "name": "Buildvoc Fire Safety Automation",
+      "aliases": [
+        "xGUI3HuU_",
+        "Lxfc9gI9A",
+        "wYIb-2891",
+        "cJ3ajMDfo",
+        "xorSGF8IS"
+      ],
+      "reason": "Connects the regulatory necessity of fire safety guidance to the specific implementation of automated tagging and quality control tools within the Buildvoc project.",
+      "confidence": 0.92
+    },
+    {
+      "name": "System Deployment & Monitoring",
+      "aliases": [
+        "XwF80gG8c",
+        "b8BbRD14K",
+        "QoxmOUWV0",
+        "O4-KOgxZH"
+      ],
+      "reason": "Follows the progression from server commands and API client usage to tracking machine learning experiments and visualizing metrics via dashboards.",
+      "confidence": 0.88
+    },
+    {
+      "name": "NLP & Semantic Quality Control",
+      "aliases": [
+        "YsQupFIBa",
+        "wHtEzyfye",
+        "YcJ300R3e",
+        "e3anrsZE2"
+      ],
+      "reason": "Links the foundational principles of textual analysis and lemmatization to advanced methods for quality estimation and semantic error review.",
+      "confidence": 0.9
+    }
+  ]
+}

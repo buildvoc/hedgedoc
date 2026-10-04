@@ -1,0 +1,53 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { createNote } from '../../../api/notes'
+import { cypressId } from '../../../utils/cypress-attribute'
+import { useUiNotifications } from '../../notifications/ui-notification-boundary'
+import { IconButton } from '../icon-button/icon-button'
+import { useRouter } from 'next/navigation'
+import React, { useCallback } from 'react'
+import { FileEarmarkPlus as IconPlus } from 'react-bootstrap-icons'
+import { Trans } from 'react-i18next'
+import { useIsMobile } from '../../../hooks/common/use-is-mobile'
+import { useFrontendConfig } from '../frontend-config-context/use-frontend-config'
+import { PermissionLevel } from '@hedgedoc/commons'
+import { useIsLoggedIn } from '../../../hooks/common/use-is-logged-in'
+
+/**
+ * Links to the "new note" endpoint
+ */
+export const NewNoteButton: React.FC = () => {
+  const { showErrorNotificationBuilder } = useUiNotifications()
+  const router = useRouter()
+  const guestAccessLevel = useFrontendConfig().guestAccess
+  const isLoggedIn = useIsLoggedIn()
+  const isMobile = useIsMobile()
+
+  const createNewNoteAndRedirect = useCallback((): void => {
+    createNote('')
+      .then((note) => {
+        router?.push(`/n/${note.metadata.primaryAlias}`)
+      })
+      .catch((error: Error) => {
+        showErrorNotificationBuilder(error.message)
+      })
+  }, [router, showErrorNotificationBuilder])
+
+  if (!isLoggedIn && guestAccessLevel !== PermissionLevel.FULL) {
+    return null
+  }
+
+  return (
+    <IconButton
+      {...cypressId('new-note-button')}
+      iconSize={1.5}
+      size={'sm'}
+      icon={IconPlus}
+      onClick={createNewNoteAndRedirect}>
+      {!isMobile && <Trans i18nKey='navigation.newNote' />}
+    </IconButton>
+  )
+}

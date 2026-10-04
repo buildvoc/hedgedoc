@@ -1,0 +1,76 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Copy to clipboard button show an error text if clipboard api isn't available: renders copy button 1`] = `
+<div>
+  <button
+    class="copy-button btn btn-dark btn-sm"
+    title="renderer.highlightCode.copyCode"
+    type="button"
+  >
+    BootstrapIconMock_Files
+  </button>
+</div>
+`;
+
+exports[`Copy to clipboard button show an error text if clipboard api isn't available: renders copy button with tooltip 1`] = `
+<div>
+  <button
+    aria-describedby="copied_35a35a31-c259-48c4-b75a-8da99859dcdb"
+    class="copy-button btn btn-dark btn-sm"
+    title="renderer.highlightCode.copyCode"
+    type="button"
+  >
+    BootstrapIconMock_Files
+  </button>
+</div>
+`;
+
+exports[`Copy to clipboard button shows an error text if writing failed: renders copy button 1`] = `
+<div>
+  <button
+    class="copy-button btn btn-dark btn-sm"
+    title="renderer.highlightCode.copyCode"
+    type="button"
+  >
+    BootstrapIconMock_Files
+  </button>
+</div>
+`;
+
+exports[`Copy to clipboard button shows an error text if writing failed: renders copy button with tooltip 1`] = `
+<div>
+  <button
+    aria-describedby="copied_35a35a31-c259-48c4-b75a-8da99859dcdb"
+    class="copy-button btn btn-dark btn-sm"
+    title="renderer.highlightCode.copyCode"
+    type="button"
+  >
+    BootstrapIconMock_Files
+  </button>
+</div>
+`;
+
+exports[`Copy to clipboard button shows an success text if writing succeeded: renders copy button 1`] = `
+<div>
+  <button
+    class="copy-button btn btn-dark btn-sm"
+    title="renderer.highlightCode.copyCode"
+    type="button"
+  >
+    BootstrapIconMock_Files
+  </button>
+</div>
+`;
+
+exports[`Copy to clipboard button shows an success text if writing succeeded: renders copy button with tooltip 1`] = `
+<div>
+  <button
+    aria-describedby="copied_35a35a31-c259-48c4-b75a-8da99859dcdb"
+    class="copy-button btn btn-dark btn-sm"
+    title="renderer.highlightCode.copyCode"
+    type="button"
+  >
+    BootstrapIconMock_Files
+  </button>
+</div>
+`;

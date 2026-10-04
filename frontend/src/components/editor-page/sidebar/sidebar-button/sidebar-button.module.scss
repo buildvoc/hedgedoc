@@ -1,0 +1,85 @@
+/*!
+ * SPDX-FileCopyrightText: 2024 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+.button {
+  height: var(--sidebar-entry-height);
+  flex: 0 0 var(--sidebar-entry-height);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  border: none;
+  border-bottom: solid 1px var(--sidebar-separator-color);
+  user-select: none;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+  transition:
+    height 0.2s,
+    flex-basis 0.2s;
+  overflow: hidden;
+  color: var(--bs-emphasis-color);
+
+  &.main {
+    border-top: solid 1px var(--sidebar-separator-color);
+    border-bottom-width: 2px;
+  }
+
+  &.hide {
+    flex-basis: 0;
+    height: 0;
+    border-width: 0;
+
+    .icon {
+      opacity: 0;
+    }
+
+    .text {
+      opacity: 0;
+    }
+  }
+
+  .icon {
+    transition: opacity 0.2s;
+    opacity: 1;
+    height: var(--sidebar-entry-height);
+    width: var(--sidebar-entry-height);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex: 0 0 var(--sidebar-entry-height);
+  }
+
+  .text {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    opacity: 1;
+    transition: opacity 0.2s;
+    text-align: left;
+    flex: 1 1 0;
+    width: 0;
+  }
+
+  .disabled {
+    text-decoration: line-through;
+  }
+
+  &.sidebar-button-primary {
+    color: var(--bs-light);
+    background: var(--bs-primary);
+
+    &:hover {
+      color: var(--bs-primary);
+      background: var(--bs-light);
+    }
+  }
+
+  &:hover {
+    color: var(--bs-light);
+    background: var(--bs-primary);
+  }
+}

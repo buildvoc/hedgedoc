@@ -1,0 +1,85 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import { Note } from '@hedgedoc/database';
+import { Mock } from 'ts-mockery';
+
+import { NoteService } from '../../notes/note.service';
+import { extractNoteIdFromRequest } from './extract-note-id-from-request';
+import { CompleteRequest } from './request.type';
+
+describe('extract note from request', () => {
+  const mockNoteIdOrAlias1 = 'mockNoteIdOrAlias1';
+  const mockNoteIdOrAlias2 = 'mockNoteIdOrAlias2';
+
+  const mockNote1 = Mock.of<Note>({ id: 1 });
+  const mockNote2 = Mock.of<Note>({ id: 2 });
+
+  let notesService: NoteService;
+
+  beforeEach(() => {
+    notesService = Mock.of<NoteService>({
+      getNoteIdByAlias: async (id) => {
+        if (id === mockNoteIdOrAlias1) {
+          return mockNote1;
+        } else if (id === mockNoteIdOrAlias2) {
+          return mockNote2;
+        } else {
+          throw new Error('unknown note id');
+        }
+      },
+    });
+  });
+
+  function createRequest(
+    parameterValue: string | undefined,
+    headerValue: string | string[] | undefined,
+  ): CompleteRequest {
+    return Mock.of<CompleteRequest>({
+      params: parameterValue
+        ? {
+            noteAlias: parameterValue,
+          }
+        : {},
+      headers: headerValue
+        ? {
+            // oxlint-disable-next-line @typescript-eslint/naming-convention
+            'hedgedoc-note': headerValue,
+          }
+        : {},
+    });
+  }
+
+  it('will return undefined if no id is present', async () => {
+    const request = createRequest(undefined, undefined);
+    expect(await extractNoteIdFromRequest(request, notesService)).toBe(undefined);
+  });
+
+  it('can extract an id from parameters', async () => {
+    const request = createRequest(mockNoteIdOrAlias1, undefined);
+    expect(await extractNoteIdFromRequest(request, notesService)).toBe(mockNote1);
+  });
+
+  it('can extract an id from headers if no parameter is given', async () => {
+    const request = createRequest(undefined, mockNoteIdOrAlias1);
+    expect(await extractNoteIdFromRequest(request, notesService)).toBe(mockNote1);
+  });
+
+  it('can extract the first id from multiple id headers', async () => {
+    const request = createRequest(undefined, [mockNoteIdOrAlias1, mockNoteIdOrAlias2]);
+    expect(await extractNoteIdFromRequest(request, notesService)).toBe(mockNote1);
+  });
+
+  it('will return undefined if no parameter and empty id header array', async () => {
+    const request = createRequest(undefined, []);
+    expect(await extractNoteIdFromRequest(request, notesService)).toBe(undefined);
+  });
+
+  it('will prefer the parameter over the header', async () => {
+    const request = createRequest(mockNoteIdOrAlias1, mockNoteIdOrAlias2);
+    expect(await extractNoteIdFromRequest(request, notesService)).toBe(mockNote1);
+  });
+});

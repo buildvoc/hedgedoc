@@ -1,0 +1,186 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`CommonModal does not render if show is false 1`] = `<div />`;
+
+exports[`CommonModal render correctly in size lg 1`] = `
+<div
+  class="modal-dialog modal-lg"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        <span />
+      </div>
+    </div>
+    testText
+  </div>
+</div>
+`;
+
+exports[`CommonModal render correctly in size sm 1`] = `
+<div
+  class="modal-dialog modal-sm"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        <span />
+      </div>
+    </div>
+    testText
+  </div>
+</div>
+`;
+
+exports[`CommonModal render correctly in size xl 1`] = `
+<div
+  class="modal-dialog modal-xl"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        <span />
+      </div>
+    </div>
+    testText
+  </div>
+</div>
+`;
+
+exports[`CommonModal render correctly with additionalClasses 1`] = `
+<div
+  class="modal-dialog testClass"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        <span />
+      </div>
+    </div>
+    testText
+  </div>
+</div>
+`;
+
+exports[`CommonModal render correctly with i18nTitle 1`] = `
+<div
+  class="modal-dialog"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        testTitle
+      </div>
+    </div>
+    testText
+  </div>
+</div>
+`;
+
+exports[`CommonModal render correctly with title 1`] = `
+<div
+  class="modal-dialog"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        testTitle
+      </div>
+    </div>
+    testText
+  </div>
+</div>
+`;
+
+exports[`CommonModal render correctly with title icon 1`] = `
+<div
+  class="modal-dialog"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        BootstrapIconMock_Heart
+         
+        <span />
+      </div>
+    </div>
+    testText
+  </div>
+</div>
+`;
+
+exports[`CommonModal renders correctly and calls onHide, when close button is clicked 1`] = `
+<div
+  class="modal-dialog"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        <span />
+      </div>
+      <button
+        aria-label="Close"
+        class="btn-close"
+        type="button"
+      />
+    </div>
+    testText
+  </div>
+</div>
+`;

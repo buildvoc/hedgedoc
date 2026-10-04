@@ -1,0 +1,25 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "automock": false,
+  "testEnvironment": "node",
+  "testMatch": ["<rootDir>/test/**/*.e2e-spec.{ts,js}"],
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "test/tsconfig.json",
+        "diagnostics": {
+          "ignoreCodes": [
+            151002
+          ]
+        }
+      }
+    ]
+  },
+  "coverageDirectory": "./coverage-e2e",
+  "testTimeout": 15000,
+  "reporters": ["default", "github-actions"],
+  "maxWorkers": 4,
+  "workerIdleMemoryLimit": "1GB"
+}

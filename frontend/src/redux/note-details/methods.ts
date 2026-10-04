@@ -1,0 +1,103 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { store } from '..'
+import { getNoteMetadata, getNotePermissions } from '../../api/notes'
+import type { CursorSelection } from '../../components/editor-page/editor-pane/tool-bar/formatters/types/cursor-selection'
+import type { NoteInterface, NotePermissionsInterface } from '@hedgedoc/commons'
+import { noteDetailsActionsCreator } from './slice'
+import { getAllAliases } from '../../api/alias'
+
+/**
+ * Sets the content of the current note, extracts and parses the frontmatter and extracts the markdown content part.
+ * @param content The note content as it is written inside the editor pane.
+ */
+export const setNoteContent = (content: string): void => {
+  const action = noteDetailsActionsCreator.setNoteContent(content)
+  store.dispatch(action)
+}
+
+/**
+ * Sets the note metadata for the current note from an API response DTO to the redux.
+ * @param apiResponse The NoteDTO received from the API to store into redux.
+ */
+export const setNoteDataFromServer = (apiResponse: NoteInterface): void => {
+  const action = noteDetailsActionsCreator.setNoteDataFromServer(apiResponse)
+  store.dispatch(action)
+}
+
+/**
+ * Sets the note permissions for the current note from an API response DTO to the redux.
+ * @param apiResponse The NotePermissionsDTO received from the API to store into redux.
+ */
+export const setNotePermissionsFromServer = (apiResponse: NotePermissionsInterface): void => {
+  const action = noteDetailsActionsCreator.setNotePermissionsFromServer(apiResponse)
+  store.dispatch(action)
+}
+
+/**
+ * Updates the note title in the redux by the first heading found in the markdown content.
+ * @param firstHeading The content of the first heading found in the markdown content.
+ */
+export const updateNoteTitleByFirstHeading = (firstHeading?: string): void => {
+  const action = noteDetailsActionsCreator.updateNoteTitleByFirstHeading(firstHeading)
+  store.dispatch(action)
+}
+
+/**
+ * Updates the redux state with the current user's cursor position and/or selection.
+ * This is stored in redux to allow working on the cursor position with actions like "surround with ..."
+ * @param selection The CursorSelection object from the CodeMirror editor
+ */
+export const updateCursorPositions = (selection: CursorSelection): void => {
+  const action = noteDetailsActionsCreator.updateCursorPosition(selection)
+  store.dispatch(action)
+}
+
+/**
+ * Updates the current note's metadata from the server.
+ */
+export const updateMetadata = async (): Promise<void> => {
+  const noteDetails = store.getState().noteDetails
+  if (!noteDetails) {
+    return
+  }
+  const updatedMetadata = await getNoteMetadata(noteDetails.primaryAlias)
+  const action = noteDetailsActionsCreator.updateMetadata(updatedMetadata)
+  store.dispatch(action)
+}
+
+/**
+ * Updates the current note's permissions from the server.
+ */
+export const updateNotePermissions = async (): Promise<void> => {
+  const noteDetails = store.getState().noteDetails
+  if (!noteDetails) {
+    return
+  }
+  const updatedPermissions = await getNotePermissions(noteDetails.primaryAlias)
+  const action = noteDetailsActionsCreator.setNotePermissionsFromServer(updatedPermissions)
+  store.dispatch(action)
+}
+
+/**
+ * Updates the current note's alias list from the server.
+ * @param newPrimaryAlias The new primary alias of the note. Can be undefined when the primary alias is not changed.
+ */
+export const updateNoteAliases = async (newPrimaryAlias?: string): Promise<void> => {
+  const noteDetails = store.getState().noteDetails
+  if (!noteDetails) {
+    return
+  }
+  const previousPrimaryAlias = noteDetails.primaryAlias
+  const updatedAliases = await getAllAliases(newPrimaryAlias ?? previousPrimaryAlias)
+  const action = noteDetailsActionsCreator.updateAliases(updatedAliases)
+  store.dispatch(action)
+}
+
+export const unloadNote = (): void => {
+  const action = noteDetailsActionsCreator.unloadNote()
+  store.dispatch(action)
+}

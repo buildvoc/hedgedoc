@@ -1,0 +1,151 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`katex frame renders a valid latex expression as explicit block 1`] = `
+<div>
+  <p
+    data-testid="katex-block"
+  >
+    <span>
+      This is a mock for lib katex with this parameters:
+    </span>
+    
+
+    <span>
+      
+  
+      <span>
+        tex: \\int_0^\\infty x^2 dx
+      </span>
+      
+  
+      <span>
+        block: true
+      </span>
+      
+
+    </span>
+  </p>
+</div>
+`;
+
+exports[`katex frame renders a valid latex expression as explicit inline 1`] = `
+<div>
+  <span
+    data-testid="katex-inline"
+  >
+    <span>
+      This is a mock for lib katex with this parameters:
+    </span>
+    
+
+    <span>
+      
+  
+      <span>
+        tex: \\int_0^\\infty x^2 dx
+      </span>
+      
+  
+      <span>
+        block: false
+      </span>
+      
+
+    </span>
+  </span>
+</div>
+`;
+
+exports[`katex frame renders a valid latex expression as implicit inline 1`] = `
+<div>
+  <span
+    data-testid="katex-inline"
+  >
+    <span>
+      This is a mock for lib katex with this parameters:
+    </span>
+    
+
+    <span>
+      
+  
+      <span>
+        tex: \\int_0^\\infty x^2 dx
+      </span>
+      
+  
+      <span>
+        block: false
+      </span>
+      
+
+    </span>
+  </span>
+</div>
+`;
+
+exports[`katex frame renders an error for an invalid latex expression as explicit block 1`] = `
+<div>
+  <p
+    data-testid="katex-block"
+  >
+    <div>
+      <h3>
+        This is a mock for ApplicationErrorAlert.
+      </h3>
+      Props: 
+      <code>
+        {"className":""}
+      </code>
+      Children:
+      <div>
+        mocked parseerror
+      </div>
+    </div>
+  </p>
+</div>
+`;
+
+exports[`katex frame renders an error for an invalid latex expression as explicit inline 1`] = `
+<div>
+  <span
+    data-testid="katex-inline"
+  >
+    <div>
+      <h3>
+        This is a mock for ApplicationErrorAlert.
+      </h3>
+      Props: 
+      <code>
+        {"className":"d-inline-block"}
+      </code>
+      Children:
+      <div>
+        mocked parseerror
+      </div>
+    </div>
+  </span>
+</div>
+`;
+
+exports[`katex frame renders an error for an invalid latex expression as implicit inline 1`] = `
+<div>
+  <span
+    data-testid="katex-inline"
+  >
+    <div>
+      <h3>
+        This is a mock for ApplicationErrorAlert.
+      </h3>
+      Props: 
+      <code>
+        {"className":"d-inline-block"}
+      </code>
+      Children:
+      <div>
+        mocked parseerror
+      </div>
+    </div>
+  </span>
+</div>
+`;

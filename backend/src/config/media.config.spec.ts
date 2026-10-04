@@ -1,0 +1,503 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import type { SpyInstance } from 'jest-mock';
+import { MediaBackendType } from '@hedgedoc/commons';
+import mockedEnv from 'mocked-env';
+
+import mediaConfig, {
+  AzureMediaConfig,
+  FilesystemMediaConfig,
+  ImgurMediaConfig,
+  S3MediaConfig,
+  WebdavMediaConfig,
+} from './media.config';
+
+describe('mediaConfig', () => {
+  // Filesystem
+  const uploadPath = 'uploads';
+  // S3
+  const accessKeyId = 'accessKeyId';
+  const secretAccessKey = 'secretAccessKey';
+  const bucket = 'bucket';
+  const endPoint = 'https://endPoint';
+  const region = 'us-east-1';
+  const pathStyle = false;
+  // Azure
+  const azureConnectionString = 'connectionString';
+  const container = 'container';
+  // Imgur
+  const clientID = 'clientID';
+  // Webdav
+  const webdavConnectionString = 'https://example.com/webdav';
+  const uploadDir = 'uploadDir';
+  const publicUrl = 'https://example.com/images';
+
+  describe('maxUploadSize', () => {
+    it('uses default value when HD_MEDIA_MAX_UPLOAD_SIZE is not set', () => {
+      const restore = mockedEnv(
+        {
+          /* oxlint-disable @typescript-eslint/naming-convention */
+          HD_MEDIA_BACKEND_TYPE: MediaBackendType.FILESYSTEM,
+          HD_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH: uploadPath,
+          /* oxlint-enable @typescript-eslint/naming-convention */
+        },
+        {
+          clear: true,
+        },
+      );
+      const config = mediaConfig();
+      expect(config.maxUploadSize).toEqual(20971520); // 20 MB default
+      restore();
+    });
+
+    it('correctly parses HD_MEDIA_MAX_UPLOAD_SIZE when set', () => {
+      const maxSize = 10485760; // 10 MB
+      const restore = mockedEnv(
+        {
+          /* oxlint-disable @typescript-eslint/naming-convention */
+          HD_MEDIA_BACKEND_TYPE: MediaBackendType.FILESYSTEM,
+          HD_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH: uploadPath,
+          HD_MEDIA_MAX_UPLOAD_SIZE: maxSize.toString(),
+          /* oxlint-enable @typescript-eslint/naming-convention */
+        },
+        {
+          clear: true,
+        },
+      );
+      const config = mediaConfig();
+      expect(config.maxUploadSize).toEqual(maxSize);
+      restore();
+    });
+  });
+
+  describe('correctly parses config', () => {
+    it('for backend filesystem', () => {
+      const restore = mockedEnv(
+        {
+          /* oxlint-disable @typescript-eslint/naming-convention */
+          HD_MEDIA_BACKEND_TYPE: MediaBackendType.FILESYSTEM,
+          HD_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH: uploadPath,
+          /* oxlint-enable @typescript-eslint/naming-convention */
+        },
+        {
+          clear: true,
+        },
+      );
+      const config = mediaConfig() as { backend: FilesystemMediaConfig };
+      expect(config.backend.type).toEqual(MediaBackendType.FILESYSTEM);
+      expect(config.backend.filesystem.uploadPath).toEqual(uploadPath);
+      restore();
+    });
+
+    it('for backend s3', () => {
+      const restore = mockedEnv(
+        {
+          /* oxlint-disable @typescript-eslint/naming-convention */
+          HD_MEDIA_BACKEND_TYPE: MediaBackendType.S3,
+          HD_MEDIA_BACKEND_S3_ACCESS_KEY: accessKeyId,
+          HD_MEDIA_BACKEND_S3_SECRET_KEY: secretAccessKey,
+          HD_MEDIA_BACKEND_S3_BUCKET: bucket,
+          HD_MEDIA_BACKEND_S3_ENDPOINT: endPoint,
+          HD_MEDIA_BACKEND_S3_REGION: region,
+          HD_MEDIA_BACKEND_S3_PATH_STYLE: pathStyle.toString(),
+          /* oxlint-enable @typescript-eslint/naming-convention */
+        },
+        {
+          clear: true,
+        },
+      );
+      const config = mediaConfig() as { backend: S3MediaConfig };
+      expect(config.backend.type).toEqual(MediaBackendType.S3);
+      expect(config.backend.s3.accessKeyId).toEqual(accessKeyId);
+      expect(config.backend.s3.secretAccessKey).toEqual(secretAccessKey);
+      expect(config.backend.s3.bucket).toEqual(bucket);
+      expect(config.backend.s3.endpoint).toEqual(endPoint);
+      expect(config.backend.s3.region).toEqual(region);
+      expect(config.backend.s3.pathStyle).toEqual(pathStyle);
+      restore();
+    });
+
+    it('for backend azure', () => {
+      const restore = mockedEnv(
+        {
+          /* oxlint-disable @typescript-eslint/naming-convention */
+          HD_MEDIA_BACKEND_TYPE: MediaBackendType.AZURE,
+          HD_MEDIA_BACKEND_AZURE_CONNECTION_STRING: azureConnectionString,
+          HD_MEDIA_BACKEND_AZURE_CONTAINER: container,
+          /* oxlint-enable @typescript-eslint/naming-convention */
+        },
+        {
+          clear: true,
+        },
+      );
+      const config = mediaConfig() as { backend: AzureMediaConfig };
+      expect(config.backend.type).toEqual(MediaBackendType.AZURE);
+      expect(config.backend.azure.connectionString).toEqual(azureConnectionString);
+      expect(config.backend.azure.container).toEqual(container);
+      restore();
+    });
+
+    it('for backend imgur', () => {
+      const restore = mockedEnv(
+        {
+          /* oxlint-disable @typescript-eslint/naming-convention */
+          HD_MEDIA_BACKEND_TYPE: MediaBackendType.IMGUR,
+          HD_MEDIA_BACKEND_IMGUR_CLIENT_ID: clientID,
+          /* oxlint-enable @typescript-eslint/naming-convention */
+        },
+        {
+          clear: true,
+        },
+      );
+      const config = mediaConfig() as { backend: ImgurMediaConfig };
+      expect(config.backend.type).toEqual(MediaBackendType.IMGUR);
+      expect(config.backend.imgur.clientId).toEqual(clientID);
+      restore();
+    });
+
+    it('for backend webdav', () => {
+      const restore = mockedEnv(
+        {
+          /* oxlint-disable @typescript-eslint/naming-convention */
+          HD_MEDIA_BACKEND_TYPE: MediaBackendType.WEBDAV,
+          HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING: webdavConnectionString,
+          HD_MEDIA_BACKEND_WEBDAV_UPLOAD_DIR: uploadDir,
+          HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL: publicUrl,
+          /* oxlint-enable @typescript-eslint/naming-convention */
+        },
+        {
+          clear: true,
+        },
+      );
+      const config = mediaConfig() as { backend: WebdavMediaConfig };
+      expect(config.backend.type).toEqual(MediaBackendType.WEBDAV);
+      expect(config.backend.webdav.connectionString).toEqual(webdavConnectionString);
+      expect(config.backend.webdav.uploadDir).toEqual(uploadDir);
+      expect(config.backend.webdav.publicUrl).toEqual(publicUrl);
+      restore();
+    });
+  });
+
+  describe('throws error', () => {
+    let spyConsoleError: SpyInstance;
+    let spyProcessExit: jest.Mock;
+    let originalProcess: typeof process;
+
+    beforeEach(() => {
+      spyConsoleError = jest.spyOn(console, 'error');
+      spyProcessExit = jest.fn();
+      originalProcess = global.process;
+      global.process = {
+        ...originalProcess,
+        exit: spyProcessExit,
+      } as unknown as typeof global.process;
+    });
+
+    afterEach(() => {
+      global.process = originalProcess;
+      jest.restoreAllMocks();
+    });
+
+    describe('for backend filesystem', () => {
+      it('when HD_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.FILESYSTEM,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+    });
+
+    describe('for backend s3', () => {
+      it('when HD_MEDIA_BACKEND_S3_ACCESS_KEY is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.S3,
+            HD_MEDIA_BACKEND_S3_SECRET_KEY: secretAccessKey,
+            HD_MEDIA_BACKEND_S3_BUCKET: bucket,
+            HD_MEDIA_BACKEND_S3_ENDPOINT: endPoint,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_S3_ACCESS_KEY_ID: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_S3_SECRET_KEY is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.S3,
+            HD_MEDIA_BACKEND_S3_ACCESS_KEY: accessKeyId,
+            HD_MEDIA_BACKEND_S3_BUCKET: bucket,
+            HD_MEDIA_BACKEND_S3_ENDPOINT: endPoint,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_S3_SECRET_ACCESS_KEY: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_S3_BUCKET is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.S3,
+            HD_MEDIA_BACKEND_S3_ACCESS_KEY: accessKeyId,
+            HD_MEDIA_BACKEND_S3_SECRET_KEY: secretAccessKey,
+            HD_MEDIA_BACKEND_S3_ENDPOINT: endPoint,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain('HD_MEDIA_BACKEND_S3_BUCKET: Required');
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_S3_ENDPOINT is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.S3,
+            HD_MEDIA_BACKEND_S3_ACCESS_KEY: accessKeyId,
+            HD_MEDIA_BACKEND_S3_SECRET_KEY: secretAccessKey,
+            HD_MEDIA_BACKEND_S3_BUCKET: bucket,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_S3_ENDPOINT: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_S3_ENDPOINT is not an URI', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.S3,
+            HD_MEDIA_BACKEND_S3_ACCESS_KEY: accessKeyId,
+            HD_MEDIA_BACKEND_S3_SECRET_KEY: secretAccessKey,
+            HD_MEDIA_BACKEND_S3_BUCKET: bucket,
+            HD_MEDIA_BACKEND_S3_ENDPOINT: 'wrong-uri',
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_S3_ENDPOINT: Invalid url',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+    });
+
+    describe('for backend azure', () => {
+      it('when HD_MEDIA_BACKEND_AZURE_CONNECTION_STRING is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.AZURE,
+            HD_MEDIA_BACKEND_AZURE_CONTAINER: container,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_AZURE_CONNECTION_STRING: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_AZURE_CONTAINER is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.AZURE,
+            HD_MEDIA_BACKEND_AZURE_CONNECTION_STRING: azureConnectionString,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_AZURE_CONTAINER: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+    });
+
+    describe('for backend imgur', () => {
+      it('when HD_MEDIA_BACKEND_IMGUR_CLIENT_ID is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.IMGUR,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_IMGUR_CLIENT_ID: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+    });
+
+    describe('for backend webdav', () => {
+      it('when HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.WEBDAV,
+            HD_MEDIA_BACKEND_WEBDAV_UPLOAD_DIR: uploadDir,
+            HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL: publicUrl,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING is not set to an url', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.WEBDAV,
+            HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING: 'not-an-url',
+            HD_MEDIA_BACKEND_WEBDAV_UPLOAD_DIR: uploadDir,
+            HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL: publicUrl,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING: Invalid url',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL is not set', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.WEBDAV,
+            HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING: webdavConnectionString,
+            HD_MEDIA_BACKEND_WEBDAV_UPLOAD_DIR: uploadDir,
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL: Required',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+      it('when HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL is not set to an url', async () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.WEBDAV,
+            HD_MEDIA_BACKEND_WEBDAV_CONNECTION_STRING: webdavConnectionString,
+            HD_MEDIA_BACKEND_WEBDAV_UPLOAD_DIR: uploadDir,
+            HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL: 'not-an-url',
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_BACKEND_WEBDAV_PUBLIC_URL: Invalid url',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+    });
+
+    describe('for maxUploadSize', () => {
+      it('when HD_MEDIA_MAX_UPLOAD_SIZE is negative', () => {
+        const restore = mockedEnv(
+          {
+            /* oxlint-disable @typescript-eslint/naming-convention */
+            HD_MEDIA_BACKEND_TYPE: MediaBackendType.FILESYSTEM,
+            HD_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH: uploadPath,
+            HD_MEDIA_MAX_UPLOAD_SIZE: '-1',
+            /* oxlint-enable @typescript-eslint/naming-convention */
+          },
+          {
+            clear: true,
+          },
+        );
+        mediaConfig();
+        expect(spyConsoleError.mock.calls[0][0]).toContain(
+          'HD_MEDIA_MAX_UPLOAD_SIZE: Number must be greater than or equal to 0',
+        );
+        expect(spyProcessExit).toHaveBeenCalledWith(1);
+        restore();
+      });
+    });
+  });
+});

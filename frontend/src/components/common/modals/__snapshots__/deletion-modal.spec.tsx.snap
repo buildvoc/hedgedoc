@@ -1,0 +1,48 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DeletionModal renders correctly with deletionButtonI18nKey 1`] = `
+<div
+  class="modal-dialog"
+  data-testid="commonModal"
+>
+  <div
+    class="modal-content"
+  >
+    <div
+      class="modal-header"
+    >
+      <div
+        class="modal-title h4"
+      >
+        <span />
+      </div>
+      <button
+        aria-label="Close"
+        class="btn-close"
+        type="button"
+      />
+    </div>
+    <div
+      class="modal-body"
+    >
+      testText
+    </div>
+    <div
+      class="modal-footer"
+    >
+      <button
+        class="btn btn-secondary"
+        type="button"
+      >
+        common.cancel
+      </button>
+      <button
+        class="btn btn-danger"
+        type="button"
+      >
+        testDeletionButton
+      </button>
+    </div>
+  </div>
+</div>
+`;

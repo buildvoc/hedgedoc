@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2021 The HedgeDoc developers (see AUTHORS file)
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Setup Node
+description: "Setups node and configures the cache"
+
+inputs:
+  NODEJS_VERSION:
+    required: true
+    description: "NodeJS version to install"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get yarn cache directory path
+      id: yarn-cache-dir-path
+      run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Cache yarn cache
+      uses: actions/cache@v5.0.3
+      id: yarn-cache
+      with:
+        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+        key: ${{ runner.os }}-yarn
+
+    - name: Get cypress version
+      id: cypress-version
+      run: echo "cyver=$(jq -r '.devDependencies.cypress' package.json)" >> $GITHUB_OUTPUT
+      working-directory: frontend/
+      shell: bash
+
+    - name: Cache cypress binaries
+      uses: actions/cache@v5.0.3
+      id: cypress-cache
+      with:
+        path: /home/runner/.cache/cypress
+        key: cypress-${{ runner.os }}-${{ steps.cypress-version.outputs.cyver }}
+        restore-keys: |
+          cypress-${{ runner.os }}-${{ steps.cypress-version.outputs.cyver }}
+
+    - name: Set up NodeJS
+      uses: actions/setup-node@v6.3.0
+      with:
+        node-version: ${{ inputs.NODEJS_VERSION }}
+
+    - name: Install dependencies
+      run: yarn install --immutable
+      working-directory: .
+      shell: bash
+      env:
+        CYPRESS_CACHE_FOLDER: /home/runner/.cache/cypress

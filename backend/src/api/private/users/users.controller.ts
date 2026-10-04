@@ -1,0 +1,41 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+
+import { UserInfoDto } from '../../../dtos/user-info.dto';
+import { UsernameCheckResponseDto } from '../../../dtos/username-check-response.dto';
+import { UsernameCheckDto } from '../../../dtos/username-check.dto';
+import { ConsoleLoggerService } from '../../../logger/console-logger.service';
+import { UsersService } from '../../../users/users.service';
+import { OpenApi } from '../../utils/decorators/openapi.decorator';
+
+@ApiTags('users')
+@OpenApi(403, 429)
+@Controller('users')
+export class UsersController {
+  constructor(
+    private readonly logger: ConsoleLoggerService,
+    private userService: UsersService,
+  ) {
+    this.logger.setContext(UsersController.name);
+  }
+
+  @Post('check')
+  @HttpCode(200)
+  @OpenApi(200)
+  async checkUsername(@Body() usernameCheck: UsernameCheckDto): Promise<UsernameCheckResponseDto> {
+    const userExists = await this.userService.isUsernameTaken(usernameCheck.username);
+    // TODO Check if username is blocked (https://github.com/hedgedoc/hedgedoc/issues/5794)
+    return UsernameCheckResponseDto.create({ usernameAvailable: !userExists });
+  }
+
+  @Get('profile/:username')
+  @OpenApi(200)
+  async getUser(@Param('username') username: string): Promise<UserInfoDto> {
+    return await this.userService.getUserDtoByUsername(username);
+  }
+}

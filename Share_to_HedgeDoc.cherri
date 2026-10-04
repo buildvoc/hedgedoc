@@ -1,0 +1,73 @@
+#define name Share to HedgeDoc
+#define color blue
+#define glyph noteTextPlus
+#define inputs webpage
+#define from sharesheet
+#define noinput askfor text
+#define mac false
+#define version 26.4
+
+#include 'actions/web'
+#include 'actions/text'
+
+const baseURL = text("http://192.168.1.142:8180")
+const apiToken = text("PASTE_WIKI_BOT_BEARER_TOKEN_HERE")
+
+@webpage = ShortcutInput
+
+const rawTitle = getWebPageDetail(@webpage, "Name")
+const pageURL = getWebPageDetail(@webpage, "Page URL")
+const pageSelection = getWebPageDetail(@webpage, "Page Selection")
+
+@safeTitle = replaceText("\"", "'", "{rawTitle}")
+@safeTitle = replaceText("\n", " ", @safeTitle)
+@safeTitle = trimWhitespace(@safeTitle)
+
+if @safeTitle == "" {
+    @safeTitle = "Untitled Web Capture"
+}
+
+@description = trimWhitespace("{pageSelection}")
+
+if @description == "" {
+    @description = "Captured from {pageURL}"
+}
+
+@description = replaceText("\"", "'", @description)
+@description = replaceText("\n", " ", @description)
+
+@noteBody = text("---
+type: document
+okf_type: Source
+title: \"{@safeTitle}\"
+description: \"{@description}\"
+tags:
+  - inbox
+  - ios-share
+status: draft
+sources:
+  - \"{pageURL}\"
+---
+
+# {@safeTitle}
+
+Source: {pageURL}
+
+{@description}
+")
+
+rawAction("is.workflow.actions.downloadurl", {
+    "WFURL": "{baseURL}/api/v2/notes",
+    "WFHTTPMethod": "POST",
+    "ShowHeaders": true,
+    "WFHTTPHeaders": {
+        "Authorization": "Bearer {apiToken}",
+        "Content-Type": "text/markdown"
+    },
+    "WFHTTPBodyType": "File",
+    "WFRequestVariable": "${@noteBody}",
+    "WFAllowsCellularAccess": true,
+    "WFAllowsRedirects": true
+})
+
+showNotification("Saved: {@safeTitle}", "HedgeDoc")

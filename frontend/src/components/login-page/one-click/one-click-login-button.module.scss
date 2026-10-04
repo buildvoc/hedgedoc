@@ -1,0 +1,50 @@
+/*!
+ * SPDX-FileCopyrightText: 2024 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+@function brightness($color) {
+  @return ((red($color) * 299) + (green($color) * 587) + (blue($color) * 114)) / 1000;
+}
+
+@mixin button($color) {
+  $font-color: if(brightness($color) > 128, #000000, #ffffff);
+  color: $font-color;
+  background-color: $color;
+  &:hover {
+    background-color: darken($color, 15%);
+  }
+}
+
+.github {
+  @include button(#444444);
+}
+
+.gitlab {
+  @include button(#fa7035);
+}
+
+.google {
+  @include button(#dd4b39);
+}
+
+.azure {
+  @include button(#008ad7);
+}
+
+.facebook {
+  @include button(#0165e1);
+}
+
+.mastodon {
+  @include button(#563acc);
+}
+
+.discord {
+  @include button(#5865f2);
+}
+
+.paypal {
+  @include button(#00457c);
+}

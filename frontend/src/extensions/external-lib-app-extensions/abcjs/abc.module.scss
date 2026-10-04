@@ -1,0 +1,34 @@
+/*!
+ * SPDX-FileCopyrightText: 2024 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+.abcjs-score {
+  :global(.markdown-body) & {
+    overflow-x: auto !important;
+  }
+
+  & > svg {
+    max-width: unset !important;
+  }
+
+  &,
+  text {
+    @import '../../../../global-styles/variables.module';
+    font-family: $font-family-base;
+  }
+}
+
+@media print {
+  .abcjs-score {
+    :global(.markdown-body) & {
+      width: 100%;
+      height: auto;
+      overflow-x: hidden !important;
+    }
+    & > svg {
+      max-width: 100%;
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "name": "hedgedoc",
+  "version": "2.0.0-alpha.3",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "commons",
+    "database",
+    "dev-reverse-proxy",
+    "docs",
+    "html-to-react",
+    "markdown-it-plugins"
+  ],
+  "scripts": {
+    "build": "dotenv -c production -- turbo run build",
+    "build:test": "dotenv -c production -- turbo run build:test",
+    "lint": "dotenv -c development -- turbo run lint",
+    "lint:fix": "dotenv -c development -- turbo run lint:fix",
+    "format": "dotenv -c development -- turbo run format",
+    "format:fix": "dotenv -c development -- turbo run format:fix",
+    "start:dev": "dotenv -c development -- turbo run start:dev",
+    "start": "dotenv -c production -- turbo run start",
+    "test:ci": "dotenv -c test -- turbo run test:ci --concurrency 1",
+    "test": "dotenv -c test -- turbo run test --concurrency 1",
+    "test:e2e:ci": "dotenv -c test -- turbo run test:e2e:ci"
+  },
+  "packageManager": "yarn@4.12.0",
+  "resolutions": {
+    "@types/node": "24.10.7",
+    "domhandler": "5.0.3",
+    "@codemirror/state": "6.4.1",
+    "@codemirror/autocomplete": "6.18.4",
+    "@codemirror/view": "6.33.0",
+    "@codemirror/language": "6.10.8",
+    "@codemirror/commands": "6.6.2",
+    "@codemirror/lang-markdown": "6.2.5",
+    "@codemirror/language-data": "6.5.1",
+    "@codemirror/lint": "6.8.4",
+    "@codemirror/theme-one-dark": "6.1.2",
+    "@lezer/common": "1.5.1",
+    "@types/react": "18.3.27",
+    "eventemitter2@6.4.9": "patch:eventemitter2@npm%3A6.4.9#./.yarn/patches/eventemitter2-npm-6.4.9-ba37798a18.patch",
+    "yjs@13.6.29": "patch:yjs@npm%3A13.6.29#./.yarn/patches/yjs-remove-import-warning-in-test.patch",
+    "vega-canvas@^1.2.7": "patch:vega-canvas@npm%3A1.2.7#./.yarn/patches/remove-vega-canvas-node.patch",
+    "@dicebear/converter@9.4.0": "patch:@dicebear/converter@npm%3A9.4.0#./.yarn/patches/@dicebear-converter-fix-js-file-path.patch"
+  },
+  "devDependencies": {
+    "dotenv-cli": "11.0.0",
+    "oxfmt": "0.49.0",
+    "oxlint": "1.63.0",
+    "oxlint-tsgolint": "0.22.1",
+    "turbo": "2.8.13"
+  }
+}

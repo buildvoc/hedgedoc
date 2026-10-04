@@ -1,0 +1,46 @@
+{
+  "trails": [
+    {
+      "name": "Corpus Foundations  & Custom Training",
+      "aliases": [
+        "POlJctUmk",
+        "dW1deih5q",
+        "BO55bWQ7i"
+      ],
+      "reason": "Start with the basics of document corpus formats, then learn how to build a custom corpus for Annif projects, linking format choices to training and evaluation.",
+      "confidence": 0.93
+    },
+    {
+      "name": "Annif Implementation  & Evaluation",
+      "aliases": [
+        "b8BbRD14K",
+        "W6ofnHjV9",
+        "Z6Wxp-AVc",
+        "wHtEzyfye"
+      ],
+      "reason": "Use the Annif client, follow the handbook for setup, explore lemmatization methods to improve indexing, and assess results with editing quality metrics.",
+      "confidence": 0.87
+    },
+    {
+      "name": "Advanced Backend  & Ensemble Learning",
+      "aliases": [
+        "P0M272xo2",
+        "QzLfqFnGX",
+        "aFyry03x7"
+      ],
+      "reason": "Deploy the MLLM backend, combine projects with a neural network ensemble backend, and train the ensemble on real data to achieve robust subject indexing.",
+      "confidence": 0.92
+    },
+    {
+      "name": "Fire Safety Documentation  & Automated Tagging",
+      "aliases": [
+        "wYIb-2891",
+        "IpUWCpZZy",
+        "cJ3ajMDfo",
+        "okBF1IYJw"
+      ],
+      "reason": "Apply buildvoc tagging to fire safety guidance, use AI retrieval tools, track updates and roadmap, demonstrating end‑to‑end ML workflow for regulated documents.",
+      "confidence": 0.86
+    }
+  ]
+}

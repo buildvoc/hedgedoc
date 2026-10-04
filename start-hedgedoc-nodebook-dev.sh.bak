@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Pin the stack to the Node version used by the installed native modules.
+NODE_BIN=/home/hp/.nvm/versions/node/v22.23.2/bin
+if [[ ! -x "$NODE_BIN/node" ]]; then
+    echo "ERROR: Node 22.23.2 not found at $NODE_BIN"
+    exit 1
+fi
+export PATH="$NODE_BIN:$PATH"
+hash -r
+
+echo "Using Node $(node -v)"
+
+HD=/data/projects/hedgedoc
+
+if [[ -f "$HD/.env.memex" ]]; then
+    set -a
+    source "$HD/.env.memex"
+    set +a
+fi
+NB=/data/projects/hedgedoc-nb-frontend
+CADDY="$HD/dev-reverse-proxy/caddy"
+NB_CADDY="$HD/dev-reverse-proxy/Caddyfile.nodebook"
+
+PIDS=()
+
+cleanup() {
+    trap - EXIT INT TERM
+    echo
+    echo "Stopping HedgeDoc + nodeBook..."
+    for pid in "${PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
+    wait 2>/dev/null || true
+}
+
+trap cleanup EXIT INT TERM
+
+wait_port() {
+    local port="$1"
+    local name="$2"
+
+    for _ in $(seq 1 90); do
+        if (echo >/dev/tcp/127.0.0.1/"$port") >/dev/null 2>&1; then
+            echo "$name ready on :$port"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo "ERROR: $name did not start on :$port"
+    return 1
+}
+
+echo "=== Starting HedgeDoc ==="
+cd "$HD"
+./start-hedgedoc-wiki-dev.sh &
+PIDS+=("$!")
+
+wait_port 3100 "HedgeDoc backend"
+
+echo "=== Starting nodeBook runtime frontend ==="
+
+NODEBOOK_SERVER="$NB/frontend/dist/frontend/server.js"
+
+if [[ ! -f "$NODEBOOK_SERVER" ]]; then
+    echo "ERROR: nodeBook runtime missing: $NODEBOOK_SERVER"
+    exit 1
+fi
+
+cd "$NB/frontend/dist/frontend"
+
+NODE_ENV=production \
+PORT=3201 \
+HOSTNAME=0.0.0.0 \
+HD_BASE_URL=http://192.168.1.142:8280 \
+HD_RENDERER_BASE_URL=http://192.168.1.142:8280 \
+HD_INTERNAL_API_URL=http://127.0.0.1:3100 \
+node server.js &
+PIDS+=("$!")
+
+wait_port 3201 "nodeBook frontend"
+
+echo "=== Starting nodeBook proxy ==="
+cd "$NB/frontend"
+"$CADDY" run --config "$NB_CADDY" --adapter caddyfile &
+PIDS+=("$!")
+
+wait_port 8280 "nodeBook proxy"
+
+if [[ -n "${MEMEX_API_TOKEN:-}" ]]; then
+    echo "=== Starting Memex watcher ==="
+    cd "$HD"
+    python3 -u scripts/memex-watch.py &
+    PIDS+=("$!")
+else
+    echo "MEMEX_API_TOKEN not set - Memex watcher not started"
+fi
+
+echo
+echo "HedgeDoc : http://192.168.1.142:8180"
+echo "nodeBook : http://192.168.1.142:8280"
+echo
+echo "Ctrl+C stops this stack."
+
+wait -n "${PIDS[@]}"

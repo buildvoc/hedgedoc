@@ -1,0 +1,89 @@
+/*
+ * SPDX-FileCopyrightText: 2025 The HedgeDoc developers (see AUTHORS file)
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+import { AuthProviderType } from '@hedgedoc/commons';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  InternalServerErrorException,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+
+import { SessionGuard } from '../../../auth/session.guard';
+import { LoginUserInfoDto } from '../../../dtos/login-user-info.dto';
+import { MediaUploadDto } from '../../../dtos/media-upload.dto';
+import { ConsoleLoggerService } from '../../../logger/console-logger.service';
+import { MediaService } from '../../../media/media.service';
+import { UsersService } from '../../../users/users.service';
+import { OpenApi } from '../../utils/decorators/openapi.decorator';
+import { RequestUserId } from '../../utils/decorators/request-user-id.decorator';
+import { SessionAuthProvider } from '../../utils/decorators/session-authprovider.decorator';
+import { promisify } from 'node:util';
+import { RequestWithSession } from '../../utils/request.type';
+
+@UseGuards(SessionGuard)
+@OpenApi(401, 403, 429)
+@ApiTags('me')
+@Controller('me')
+export class MeController {
+  constructor(
+    private readonly logger: ConsoleLoggerService,
+    private userService: UsersService,
+    private mediaService: MediaService,
+  ) {
+    this.logger.setContext(MeController.name);
+  }
+
+  @Get()
+  @OpenApi(200)
+  async getMe(
+    @RequestUserId() userId: number,
+    @SessionAuthProvider() authProvider: AuthProviderType,
+  ): Promise<LoginUserInfoDto> {
+    const user = await this.userService.getUserById(userId);
+    return this.userService.toLoginUserInfoDto(user, authProvider);
+  }
+
+  @Get('media')
+  @OpenApi(200)
+  async getMyMedia(@RequestUserId() userId: number): Promise<MediaUploadDto[]> {
+    const mediaUuids = await this.mediaService.getMediaUploadUuidsByUserId(userId);
+    return await this.mediaService.getMediaUploadDtosByUuids(mediaUuids);
+  }
+
+  @Delete()
+  @OpenApi(204, 404, 500)
+  async deleteUser(
+    @Req() request: RequestWithSession,
+    @RequestUserId() userId: number,
+  ): Promise<void> {
+    const mediaUploads = await this.mediaService.getMediaUploadUuidsByUserId(userId);
+    for (const mediaUpload of mediaUploads) {
+      await this.mediaService.deleteFile(mediaUpload);
+    }
+    this.logger.debug(`Deleted all media uploads for user with id ${userId}`);
+    await this.userService.deleteUser(userId);
+    this.logger.debug(`Deleted user with id ${userId}`);
+    const destroySessionPromise = promisify(request.session.destroy.bind(request.session));
+    destroySessionPromise().catch((error: Error) => {
+      this.logger.error('Error while destroying session:' + String(error), undefined, 'deleteUser');
+      throw new InternalServerErrorException('Error trying to destroy session of deleted user');
+    });
+  }
+
+  @Put('profile')
+  @OpenApi(200)
+  async updateProfile(
+    @RequestUserId({ forbidGuests: true }) userId: number,
+    @Body('displayName') newDisplayName: string,
+  ): Promise<void> {
+    await this.userService.updateUser(userId, newDisplayName, undefined, undefined);
+  }
+}
