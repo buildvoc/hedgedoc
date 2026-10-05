@@ -974,7 +974,8 @@ async function analyze(
     )
   }
 
-  const ollama = settings.baseUrl
+  const provider = settings.provider
+  const baseUrl = settings.baseUrl.replace(/\/$/, '')
   const model = settings.defaultModel
 
   const sourceTitle = doclingDocument &&
@@ -1114,43 +1115,62 @@ Return JSON only:
     settings.maxPromptChars
   )
 
-  const response = await fetch(
-    `${ollama.replace(/\/$/, '')}/api/chat`,
+  const messages = [
     {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      signal: AbortSignal.timeout(
-        settings.timeoutSeconds * 1000
-      ),
-      body: JSON.stringify({
-        model,
-        stream: false,
-        format: 'json',
-        options: {
-          num_ctx: settings.numCtx,
-          temperature: settings.temperature
-        },
-        messages: [
-          {
-            role: 'user',
-            content: requestPrompt
-          }
-        ]
-      })
+      role: 'user',
+      content: requestPrompt
     }
-  )
+  ]
+
+  const endpoint =
+    provider === 'llamacpp'
+      ? `${baseUrl}/chat/completions`
+      : `${baseUrl}/api/chat`
+
+  const requestBody =
+    provider === 'llamacpp'
+      ? {
+          model,
+          stream: false,
+          temperature: settings.temperature,
+          messages
+        }
+      : {
+          model,
+          stream: false,
+          format: 'json',
+          options: {
+            num_ctx: settings.numCtx,
+            temperature: settings.temperature
+          },
+          messages
+        }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    signal: AbortSignal.timeout(
+      settings.timeoutSeconds * 1000
+    ),
+    body: JSON.stringify(requestBody)
+  })
 
   if (!response.ok) {
+    const detail = await response.text()
+
     throw new Error(
-      `Ollama HTTP ${response.status}`
+      `${provider} HTTP ${response.status}: ${detail.slice(0, 500)}`
     )
   }
 
-  const ollamaResult = await response.json()
+  const llmResult = await response.json()
+
   let rawText = String(
-    ollamaResult?.message?.content ?? ''
+    provider === 'llamacpp'
+      ? llmResult?.choices?.[0]?.message?.content ?? ''
+      : llmResult?.message?.content ?? ''
   ).trim()
 
   rawText = rawText

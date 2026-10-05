@@ -22,6 +22,120 @@ type RenderState =
 
 let componentLoader: Promise<void> | null = null
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const collectMediaUris = (value: unknown, uris: Set<string>): void => {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectMediaUris(entry, uris))
+    return
+  }
+
+  if (!isRecord(value)) {
+    return
+  }
+
+  Object.entries(value).forEach(([key, entry]) => {
+    if (key === 'uri' && typeof entry === 'string' && /^\/?media\//.test(entry)) {
+      uris.add(entry)
+    } else {
+      collectMediaUris(entry, uris)
+    }
+  })
+}
+
+const replaceMediaUris = (value: unknown, replacements: Map<string, string>): void => {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => replaceMediaUris(entry, replacements))
+    return
+  }
+
+  if (!isRecord(value)) {
+    return
+  }
+
+  Object.entries(value).forEach(([key, entry]) => {
+    if (key === 'uri' && typeof entry === 'string') {
+      const replacement = replacements.get(entry)
+      if (replacement) {
+        value[key] = replacement
+      }
+    } else {
+      replaceMediaUris(entry, replacements)
+    }
+  })
+}
+
+const blobToDataUri = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+      } else {
+        reject(new Error('Unable to encode HedgeDoc media image.'))
+      }
+    })
+    reader.addEventListener('error', () => reject(reader.error ?? new Error('Unable to read HedgeDoc media image.')))
+    reader.readAsDataURL(blob)
+  })
+
+const rehydrateMediaUris = async (document: DoclingDocument, signal: AbortSignal): Promise<DoclingDocument> => {
+  const prepared = structuredClone(document)
+  const mediaUris = new Set<string>()
+  collectMediaUris(prepared, mediaUris)
+
+  const mediaReplacements = new Map(
+    await Promise.all(
+      Array.from(mediaUris).map(async (uri) => {
+        const mediaUrl = uri.startsWith('/') ? uri : `/${uri}`
+        const response = await fetch(mediaUrl, {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal
+        })
+
+        if (!response.ok) {
+          throw new Error(`Unable to load HedgeDoc media ${uri} (${response.status}).`)
+        }
+
+        return [uri, await blobToDataUri(await response.blob())] as const
+      })
+    )
+  )
+
+  replaceMediaUris(prepared, mediaReplacements)
+  return prepared
+}
+
+const normalizePageImageDisplaySizes = (document: DoclingDocument): DoclingDocument => {
+  const normalized = structuredClone(document)
+  const pages = normalized.pages
+  if (!isRecord(pages)) {
+    return normalized
+  }
+
+  Object.values(pages).forEach((page) => {
+    if (!isRecord(page) || !isRecord(page.size) || !isRecord(page.image) || !isRecord(page.image.size)) {
+      return
+    }
+
+    const width = page.size.width
+    const height = page.size.height
+    if (typeof width !== 'number' || typeof height !== 'number') {
+      return
+    }
+
+    // docling-img uses image.size.width as the rendered SVG width but page.size
+    // as its viewBox. Page images generated at 144 DPI are roughly 2 pixels
+    // per 72-DPI document point, so use the logical page dimensions for display
+    // while keeping the high-resolution embedded bitmap unchanged.
+    page.image.size = { ...page.image.size, width, height }
+  })
+
+  return normalized
+}
+
 const ensureDoclingComponents = (): Promise<void> => {
   if (customElements.get('docling-img')) {
     return Promise.resolve()
@@ -52,7 +166,7 @@ export interface DoclingRendererPaneProps {
 
 /**
  * Renders a DoclingDocument using the same docling-img web component used by Docling Serve's UI.
- * The note remains raw JSON in the editor; rendering is performed through the same-origin route.
+ * The note remains compact JSON in the editor; HedgeDoc media is expanded only in memory for rendering.
  */
 export const DoclingRendererPane: React.FC<DoclingRendererPaneProps> = ({ document: doclingDocument }) => {
   const viewerHost = useRef<HTMLDivElement>(null)
@@ -73,13 +187,19 @@ export const DoclingRendererPane: React.FC<DoclingRendererPaneProps> = ({ docume
     const timer = window.setTimeout(() => {
       setRenderState({ status: 'loading', message: 'Rendering DoclingDocument…' })
 
-      void fetch('/docling-render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document: doclingDocument }),
-        cache: 'no-store',
-        signal: controller.signal
-      })
+      // Stored Docling JSON stays compact with media/<uuid> references.
+      // Rehydrate those references only in memory before the existing Docling
+      // Serve render request; otherwise Docling Serve treats them as local paths.
+      void rehydrateMediaUris(doclingDocument, controller.signal)
+        .then((preparedDocument) =>
+          fetch('/docling-render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ document: preparedDocument }),
+            cache: 'no-store',
+            signal: controller.signal
+          })
+        )
         .then(async (response) => {
           const payload = (await response.json()) as {
             document?: DoclingDocument
@@ -90,7 +210,7 @@ export const DoclingRendererPane: React.FC<DoclingRendererPaneProps> = ({ docume
             throw new Error(payload.error ?? `Docling render failed (${response.status}).`)
           }
 
-          setRenderState({ status: 'ready', document: payload.document })
+          setRenderState({ status: 'ready', document: normalizePageImageDisplaySizes(payload.document) })
         })
         .catch((error: unknown) => {
           if (controller.signal.aborted) {

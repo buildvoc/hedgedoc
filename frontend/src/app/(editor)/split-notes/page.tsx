@@ -159,6 +159,122 @@ export default function SplitNotesPage() {
     }
   }
 
+  async function ensureConfiguredModelProvider() {
+    setServiceBusy('auto-switch')
+    setServiceError('')
+
+    try {
+      const settingsResponse = await fetch(
+        '/memex-model-settings',
+        { cache: 'no-store' }
+      )
+      const settingsBody = await settingsResponse.json()
+
+      if (!settingsResponse.ok) {
+        throw new Error(
+          settingsBody.error ??
+            `Model settings HTTP ${settingsResponse.status}`
+        )
+      }
+
+      const provider = settingsBody.provider
+
+      if (provider !== 'ollama' && provider !== 'llamacpp') {
+        throw new Error(
+          `Unsupported model provider: ${String(provider)}`
+        )
+      }
+
+      const statusResponse = await fetch(
+        '/memex-model-services',
+        { cache: 'no-store' }
+      )
+      const statusBody = await statusResponse.json()
+
+      if (!statusResponse.ok) {
+        throw new Error(
+          statusBody.error ??
+            `Model service status HTTP ${statusResponse.status}`
+        )
+      }
+
+      let services =
+        (statusBody.services ?? []) as ModelServiceStatus[]
+
+      const switchService = async (
+        service: 'ollama' | 'llamacpp',
+        action: 'start' | 'stop'
+      ): Promise<ModelServiceStatus[]> => {
+        const response = await fetch(
+          '/memex-model-services',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ service, action })
+          }
+        )
+        const body = await response.json()
+
+        if (!response.ok) {
+          throw new Error(
+            body.error ??
+              `${action} ${service} HTTP ${response.status}`
+          )
+        }
+
+        return (body.services ?? []) as ModelServiceStatus[]
+      }
+
+      const other = services.find(
+        (service) =>
+          service.key !== provider && service.active
+      )
+
+      if (other) {
+        services = await switchService(other.key, 'stop')
+      }
+
+      const selected = services.find(
+        (service) => service.key === provider
+      )
+
+      if (!selected?.active) {
+        services = await switchService(provider, 'start')
+      }
+
+      setModelServices(services)
+
+      let lastError = 'model discovery failed'
+
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        const probe = await fetch(
+          '/memex-models',
+          { cache: 'no-store' }
+        )
+        const body = await probe.json().catch(() => ({}))
+
+        if (probe.ok && body.connected) {
+          return
+        }
+
+        lastError =
+          body.error ?? `Model discovery HTTP ${probe.status}`
+
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, 1000)
+        )
+      }
+
+      throw new Error(
+        `${provider} did not become ready: ${lastError}`
+      )
+    } finally {
+      setServiceBusy(null)
+    }
+  }
+
   useEffect(() => {
     void refreshModelServices()
   }, [])
@@ -171,6 +287,8 @@ export default function SplitNotesPage() {
     setPreviews({})
 
     try {
+      await ensureConfiguredModelProvider()
+
       const response = await fetch(
         '/memex-split-notes',
         {
