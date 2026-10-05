@@ -4,9 +4,10 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Card, Col, Form, Row, Spinner } from 'react-bootstrap'
 
 type MemexKvCacheType = 'f16' | 'q8_0' | 'q4_0'
+type MemexProvider = 'ollama' | 'llamacpp'
 
 interface MemexModelSettings {
-  provider: 'ollama'
+  provider: MemexProvider
   baseUrl: string
   defaultModel: string
   numCtx: number
@@ -25,10 +26,21 @@ interface ModelsResponse {
   error?: string
 }
 
+const PROVIDER_DEFAULTS = {
+  ollama: {
+    baseUrl: 'http://192.168.1.99:11434',
+    defaultModel: 'gemma4:26b',
+  },
+  llamacpp: {
+    baseUrl: 'http://192.168.1.99:8080/v1',
+    defaultModel: '/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf',
+  },
+} as const
+
 const emptySettings: MemexModelSettings = {
-  provider: 'ollama',
-  baseUrl: '',
-  defaultModel: '',
+  provider: 'llamacpp',
+  baseUrl: 'http://192.168.1.99:8080/v1',
+  defaultModel: '/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf',
   numCtx: 65536,
   maxPromptChars: 80000,
   timeoutSeconds: 600,
@@ -46,13 +58,23 @@ export const MemexModelSettingsForm: React.FC = () => {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  const loadModels = useCallback(async () => {
-    const response = await fetch('/memex-models', { cache: 'no-store' })
+  const loadModels = useCallback(async (candidate?: MemexModelSettings) => {
+    const response = await fetch(
+      '/memex-models',
+      candidate
+        ? {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(candidate),
+            cache: 'no-store',
+          }
+        : { cache: 'no-store' },
+    )
     const payload = (await response.json()) as ModelsResponse
     setModels(payload.models ?? [])
 
     if (!response.ok || !payload.connected) {
-      throw new Error(payload.error || `Ollama model discovery HTTP ${response.status}`)
+      throw new Error(payload.error || `Model discovery HTTP ${response.status}`)
     }
 
     return payload
@@ -80,13 +102,13 @@ export const MemexModelSettingsForm: React.FC = () => {
         if (!cancelled) setSettings(payload)
 
         try {
-          await loadModels()
+          await loadModels(payload)
         } catch (caught) {
           if (!cancelled) {
             setError(
               caught instanceof Error
                 ? caught.message
-                : 'Unable to discover Ollama models',
+                : 'Unable to discover models',
             )
           }
         }
@@ -130,13 +152,13 @@ export const MemexModelSettingsForm: React.FC = () => {
     setError('')
 
     try {
-      const payload = await loadModels()
+      const payload = await loadModels(settings)
       setMessage(
         `Connected to ${payload.baseUrl}. ${payload.models?.length ?? 0} model${payload.models?.length === 1 ? '' : 's'} available.`,
       )
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : 'Unable to connect to Ollama',
+        caught instanceof Error ? caught.message : 'Unable to connect to selected provider',
       )
     } finally {
       setTesting(false)
@@ -166,9 +188,9 @@ export const MemexModelSettingsForm: React.FC = () => {
       setMessage('Memex model defaults saved.')
 
       try {
-        await loadModels()
+        await loadModels(payload)
       } catch {
-        // Settings are valid even when the configured Ollama server is offline.
+        // Settings are valid even when the configured inference server is offline.
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to save settings')
@@ -195,10 +217,37 @@ export const MemexModelSettingsForm: React.FC = () => {
         {error && <Alert variant='warning'>{error}</Alert>}
         {message && <Alert variant='success'>{message}</Alert>}
 
-        <h2 className='h5'>Ollama server</h2>
+        <h2 className='h5'>Provider</h2>
+        <Row className='g-3 mb-4'>
+          <Col md={6}>
+            <Form.Group controlId='memex-provider'>
+              <Form.Label>Inference provider</Form.Label>
+              <Form.Select
+                value={settings.provider}
+                onChange={(event) => {
+                  const provider = event.target.value as MemexProvider
+                  const defaults = PROVIDER_DEFAULTS[provider]
+                  setSettings((current) => ({
+                    ...current,
+                    provider,
+                    baseUrl: defaults.baseUrl,
+                    defaultModel: defaults.defaultModel,
+                  }))
+                  setModels([])
+                }}>
+                <option value='llamacpp'>llama.cpp</option>
+                <option value='ollama'>Ollama</option>
+              </Form.Select>
+            </Form.Group>
+          </Col>
+        </Row>
+
+        <h2 className='h5'>
+          {settings.provider === 'ollama' ? 'Ollama server' : 'llama.cpp server'}
+        </h2>
         <Row className='g-3 mb-4'>
           <Col md={9}>
-            <Form.Group controlId='memex-ollama-base-url'>
+            <Form.Group controlId='memex-provider-base-url'>
               <Form.Label>Base URL</Form.Label>
               <Form.Control
                 onChange={(event) =>
@@ -256,7 +305,7 @@ export const MemexModelSettingsForm: React.FC = () => {
         <Row className='g-3 mb-4'>
           <Col md={4}>
             <Form.Group controlId='memex-num-ctx'>
-              <Form.Label>Context (num_ctx)</Form.Label>
+              <Form.Label>{settings.provider === 'ollama' ? 'Context (num_ctx)' : 'Context window'}</Form.Label>
               <Form.Control
                 min={1024}
                 onChange={(event) => setNumber('numCtx', event.target.value)}
@@ -308,6 +357,8 @@ export const MemexModelSettingsForm: React.FC = () => {
           </Col>
         </Row>
 
+        {settings.provider === 'ollama' ? (
+          <>
         <h2 className='h5'>Ollama runtime profile</h2>
         <Alert variant='info'>
           These values are saved with the Memex model settings as the desired
@@ -375,6 +426,14 @@ export const MemexModelSettingsForm: React.FC = () => {
             configured Base URL above.
           </Form.Text>
         </div>
+
+          </>
+        ) : (
+          <Alert variant='info' className='mb-4'>
+            llama.cpp runtime options are managed by the llama-server service on G5.
+            Saving these settings does not restart or reconfigure llama-server.
+          </Alert>
+        )}
 
         <div className='d-flex justify-content-end'>
           <Button disabled={saving} onClick={() => void save()}>

@@ -2,9 +2,10 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 export type MemexKvCacheType = 'f16' | 'q8_0' | 'q4_0'
+export type MemexProvider = 'ollama' | 'llamacpp'
 
 export interface MemexModelSettings {
-  provider: 'ollama'
+  provider: MemexProvider
   baseUrl: string
   defaultModel: string
   numCtx: number
@@ -20,9 +21,9 @@ export const SETTINGS_PATH =
   '/data/projects/hedgedoc/memex/model-settings.json'
 
 export const DEFAULT_MEMEX_MODEL_SETTINGS: MemexModelSettings = {
-  provider: 'ollama',
-  baseUrl: 'http://192.168.1.99:11434',
-  defaultModel: 'gemma4:26b',
+  provider: 'llamacpp',
+  baseUrl: 'http://192.168.1.99:8080/v1',
+  defaultModel: '/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf',
   numCtx: 65536,
   maxPromptChars: 80000,
   timeoutSeconds: 600,
@@ -58,6 +59,12 @@ const numberInRange = (
   }
   return number
 }
+
+const normalizeProvider = (
+  value: unknown,
+  fallback: MemexProvider,
+): MemexProvider =>
+  value === 'ollama' || value === 'llamacpp' ? value : fallback
 
 const normalizeBoolean = (value: unknown, fallback: boolean): boolean =>
   typeof value === 'boolean' ? value : fallback
@@ -100,6 +107,7 @@ export const normalizeMemexModelSettings = (
       : {}
 
   const defaults = DEFAULT_MEMEX_MODEL_SETTINGS
+  const provider = normalizeProvider(row.provider, defaults.provider)
   const ollamaFlashAttention = normalizeBoolean(
     row.ollamaFlashAttention,
     defaults.ollamaFlashAttention,
@@ -110,7 +118,7 @@ export const normalizeMemexModelSettings = (
   )
 
   return {
-    provider: 'ollama',
+    provider,
     baseUrl: normalizeBaseUrl(row.baseUrl, defaults.baseUrl),
     defaultModel: normalizeModel(row.defaultModel, defaults.defaultModel),
     numCtx: integerInRange(row.numCtx, defaults.numCtx, 1024, 1048576),

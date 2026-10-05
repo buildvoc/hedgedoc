@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { closeSync, openSync, readFileSync } from 'node:fs'
+import { closeSync, fstatSync, openSync, readFileSync, readSync, writeSync } from 'node:fs'
 import { spawn, spawnSync } from 'node:child_process'
 
 export const runtime = 'nodejs'
@@ -9,6 +9,7 @@ const HD = '/data/projects/hedgedoc'
 const RUNNER = `${HD}/memex/process_queue_batch.py`
 const LOG = '/tmp/memex-process-queue.log'
 const SCOPED_BATCH_MAX = 4
+const LOG_TAIL_BYTES = 64 * 1024
 
 function getMemexEnv(): Record<string, string> {
   const result: Record<string, string> = {}
@@ -47,6 +48,34 @@ function getRunning() {
   return result.status === 0 && result.stdout.trim().length > 0
 }
 
+
+function getLogTail(): { logTail: string; logBytes: number } {
+  try {
+    const fd = openSync(LOG, 'r')
+    try {
+      const size = fstatSync(fd).size
+      const length = Math.min(size, LOG_TAIL_BYTES)
+      const buffer = Buffer.alloc(length)
+      if (length > 0) {
+        readSync(fd, buffer, 0, length, size - length)
+      }
+
+      let text = buffer.toString('utf8')
+      const marker = text.lastIndexOf('[memex-process] ')
+      if (marker >= 0) text = text.slice(marker)
+
+      return { logTail: text, logBytes: size }
+    } finally {
+      closeSync(fd)
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { logTail: '', logBytes: 0 }
+    }
+    throw error
+  }
+}
+
 function normalizeAliases(value: unknown): string[] {
   if (!Array.isArray(value)) return []
 
@@ -62,7 +91,8 @@ function normalizeAliases(value: unknown): string[] {
 
 export async function GET() {
   return NextResponse.json({
-    running: getRunning()
+    running: getRunning(),
+    ...getLogTail()
   })
 }
 
@@ -101,6 +131,9 @@ export async function POST(request: Request) {
 
   const log = openSync(LOG, 'a')
   const memexEnv = getMemexEnv()
+
+  const scope = aliases.length > 0 ? ` aliases=${aliases.join(',')}` : ' aliases=all-pending'
+  writeSync(log, `\n[memex-process] ${new Date().toISOString()} start${scope}\n`)
 
   if (aliases.length > 0) {
     memexEnv.MEMEX_PROCESS_BATCH_ALIASES = JSON.stringify(aliases)
