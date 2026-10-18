@@ -78,6 +78,15 @@ interface ConversationRequest {
   targetAliases?: unknown
   previewToken?: unknown
   readOnly?: unknown
+  stream?: unknown
+  kvCacheFamily?: unknown
+}
+
+type WikiKvCacheFamily = 'retrieval' | 'answer'
+
+const WIKI_KV_CACHE_FILES: Record<WikiKvCacheFamily, string> = {
+  retrieval: 'memex-wiki-chat-retrieval.bin',
+  answer: 'memex-wiki-chat-answer.bin',
 }
 
 interface StoredPreview {
@@ -93,6 +102,74 @@ interface StoredPreview {
 }
 
 const previewStore = new Map<string, StoredPreview>()
+
+let llamaSlotLock: Promise<void> = Promise.resolve()
+
+const acquireLlamaSlotLock = async (): Promise<() => void> => {
+  let release = (): void => undefined
+  const current = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const previous = llamaSlotLock
+  llamaSlotLock = previous.then(() => current)
+  await previous
+  return release
+}
+
+const normalizeWikiKvCacheFamily = (
+  value: unknown,
+): WikiKvCacheFamily | null =>
+  value === 'retrieval' || value === 'answer' ? value : null
+
+const llamaCppServerRoot = (settings: MemexModelSettings): string =>
+  settings.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '')
+
+const llamaSlotAction = async (
+  settings: MemexModelSettings,
+  action: 'save' | 'restore',
+  filename: string,
+): Promise<boolean> => {
+  if (settings.provider !== 'llamacpp' || !settings.llamacppCachePrompt) {
+    return false
+  }
+
+  try {
+    const response = await fetch(
+      `${llamaCppServerRoot(settings)}/slots/0?action=${action}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(
+          Math.min(settings.timeoutSeconds * 1000, 60_000),
+        ),
+        body: JSON.stringify({ filename }),
+      },
+    )
+
+    const responseText = await response.text().catch(() => '')
+
+    if (!response.ok) {
+      return false
+    }
+
+    // fetch() resolves when response headers arrive. Slot save/restore can still
+    // be queued or writing hundreds of MB at that point, so always consume the
+    // response body before allowing the next slot-0 operation to begin.
+    return responseText.length > 0
+  } catch {
+    return false
+  }
+}
+
+const kvCacheFilename = (
+  settings: MemexModelSettings,
+  family: WikiKvCacheFamily | null,
+): string | null =>
+  settings.provider === 'llamacpp' &&
+  settings.llamacppCachePrompt &&
+  family
+    ? WIKI_KV_CACHE_FILES[family]
+    : null
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -360,15 +437,21 @@ const llmChat = async (
   prompt: string,
   settings: MemexModelSettings,
   allowPlainAnswer = false,
+  kvCacheFamily: WikiKvCacheFamily | null = null,
+  systemPrompt: string | null = null,
 ): Promise<Record<string, unknown>> => {
-  if (prompt.length > settings.maxPromptChars) {
+  const promptChars = prompt.length + (systemPrompt?.length ?? 0)
+  if (promptChars > settings.maxPromptChars) {
     throw new Error(
-      `Conversation maintenance prompt exceeds maxPromptChars (${prompt.length} > ${settings.maxPromptChars})`,
+      `Conversation maintenance prompt exceeds maxPromptChars (${promptChars} > ${settings.maxPromptChars})`,
     )
   }
 
   const baseUrl = settings.baseUrl.replace(/\/+$/, '')
-  const messages = [{ role: 'user', content: prompt }]
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [
+    ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+    { role: 'user', content: prompt },
+  ]
   let endpoint: string
   let payload: Record<string, unknown>
 
@@ -393,18 +476,40 @@ const llmChat = async (
       temperature: settings.temperature,
       max_tokens: LLAMACPP_MAX_TOKENS,
       reasoning_effort: 'none',
-      cache_prompt: true,
+      // Read-only Wiki Chat always keeps live slot-0 prompt caching enabled.
+      // Maintenance calls continue to follow the global model setting.
+      cache_prompt: systemPrompt ? true : settings.llamacppCachePrompt,
       id_slot: 0,
     }
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(settings.timeoutSeconds * 1000),
-    body: JSON.stringify(payload),
-  })
-  const responseText = await response.text()
+  const cacheFilename = kvCacheFilename(settings, kvCacheFamily)
+  const releaseSlot = cacheFilename
+    ? await acquireLlamaSlotLock()
+    : null
+  let response: Response
+  let responseText: string
+
+  try {
+    if (cacheFilename) {
+      await llamaSlotAction(settings, 'restore', cacheFilename)
+    }
+
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(settings.timeoutSeconds * 1000),
+      body: JSON.stringify(payload),
+    })
+    responseText = await response.text()
+
+    if (response.ok && cacheFilename) {
+      await llamaSlotAction(settings, 'save', cacheFilename)
+    }
+  } finally {
+    releaseSlot?.()
+  }
+
   if (!response.ok) {
     throw new Error(
       `${settings.provider} HTTP ${response.status}` +
@@ -470,11 +575,258 @@ const llmChat = async (
   return parsed
 }
 
+
+const enqueueText = (
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  value: unknown,
+): void => {
+  if (typeof value === 'string' && value.length > 0) {
+    controller.enqueue(encoder.encode(value))
+  }
+}
+
+const parseLlamaCppStreamLine = (
+  line: string,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+): boolean => {
+  const trimmed = line.trim()
+  if (!trimmed || trimmed.startsWith(':')) return false
+  if (!trimmed.startsWith('data:')) return false
+
+  const data = trimmed.slice(5).trim()
+  if (!data) return false
+  if (data === '[DONE]') return true
+
+  const chunk: unknown = JSON.parse(data)
+  if (!isObject(chunk)) return false
+  const choices = Array.isArray(chunk.choices) ? chunk.choices : []
+  const first = isObject(choices[0]) ? choices[0] : null
+  const delta = first && isObject(first.delta) ? first.delta : null
+  enqueueText(controller, encoder, delta?.content)
+  return false
+}
+
+const parseOllamaStreamLine = (
+  line: string,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+): boolean => {
+  const trimmed = line.trim()
+  if (!trimmed) return false
+
+  const chunk: unknown = JSON.parse(trimmed)
+  if (!isObject(chunk)) return false
+  const message = isObject(chunk.message) ? chunk.message : null
+  enqueueText(controller, encoder, message?.content)
+  return chunk.done === true
+}
+
+const llmChatStream = async (
+  prompt: string,
+  settings: MemexModelSettings,
+  kvCacheFamily: WikiKvCacheFamily | null = null,
+  systemPrompt: string | null = null,
+): Promise<Response> => {
+  const promptChars = prompt.length + (systemPrompt?.length ?? 0)
+  if (promptChars > settings.maxPromptChars) {
+    throw new Error(
+      `Conversation maintenance prompt exceeds maxPromptChars (${promptChars} > ${settings.maxPromptChars})`,
+    )
+  }
+
+  const baseUrl = settings.baseUrl.replace(/\/+$/, '')
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [
+    ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+    { role: 'user', content: prompt },
+  ]
+  const endpoint =
+    settings.provider === 'ollama'
+      ? `${baseUrl}/api/chat`
+      : `${baseUrl}/chat/completions`
+  const payload =
+    settings.provider === 'ollama'
+      ? {
+          model: settings.defaultModel,
+          messages,
+          stream: true,
+          options: {
+            temperature: settings.temperature,
+            num_ctx: settings.numCtx,
+          },
+        }
+      : {
+          model: settings.defaultModel,
+          messages,
+          stream: true,
+          temperature: settings.temperature,
+          max_tokens: LLAMACPP_MAX_TOKENS,
+          reasoning_effort: 'none',
+          // Read-only Wiki Chat always keeps live slot-0 prompt caching enabled.
+          // Maintenance calls continue to follow the global model setting.
+          cache_prompt: systemPrompt ? true : settings.llamacppCachePrompt,
+          id_slot: 0,
+        }
+
+  const cacheFilename = kvCacheFilename(settings, kvCacheFamily)
+  const releaseSlot = cacheFilename
+    ? await acquireLlamaSlotLock()
+    : null
+  let response: Response
+
+  try {
+    if (cacheFilename) {
+      await llamaSlotAction(settings, 'restore', cacheFilename)
+    }
+
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(settings.timeoutSeconds * 1000),
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const responseText = await response.text()
+      throw new Error(
+        `${settings.provider} HTTP ${response.status}` +
+          (responseText ? `: ${responseText.slice(0, 300)}` : ''),
+      )
+    }
+  } catch (error) {
+    releaseSlot?.()
+    throw error
+  }
+
+  const upstream = response.body
+  if (!upstream) {
+    releaseSlot?.()
+    throw new Error('LLM streaming response has no body')
+  }
+  const provider = settings.provider
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = upstream.getReader()
+      const decoder = new TextDecoder()
+      const encoder = new TextEncoder()
+      let buffer = ''
+      let finished = false
+
+      const consumeLine = (line: string): void => {
+        if (finished) return
+        finished =
+          provider === 'ollama'
+            ? parseOllamaStreamLine(line, controller, encoder)
+            : parseLlamaCppStreamLine(line, controller, encoder)
+      }
+
+      let completed = false
+
+      try {
+        while (!finished) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+
+          let newline = buffer.indexOf('\n')
+          while (newline >= 0) {
+            const line = buffer.slice(0, newline)
+            buffer = buffer.slice(newline + 1)
+            consumeLine(line)
+            if (finished) break
+            newline = buffer.indexOf('\n')
+          }
+        }
+
+        buffer += decoder.decode()
+        if (!finished && buffer.trim()) consumeLine(buffer)
+        completed = true
+        controller.close()
+      } catch (error) {
+        controller.error(error)
+      } finally {
+        reader.releaseLock()
+        if (completed && cacheFilename) {
+          await llamaSlotAction(settings, 'save', cacheFilename)
+        }
+        releaseSlot?.()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-Accel-Buffering': 'no',
+    },
+  })
+}
+
+const buildReadOnlyPromptParts = (
+  conversation: string,
+  catalogue: WikiIndexEntry[],
+  loadedPages: LoadedWikiPage[],
+  streamAnswer: boolean,
+): { systemPrompt: string; userPrompt: string } => {
+  const catalogueText = catalogue.length
+    ? catalogue
+        .map(
+          (page) =>
+            `- [${page.pageType}] ${page.title} | alias=${page.alias} | ${page.description}`,
+        )
+        .join('\n')
+    : '(empty)'
+  const pageText = loadedPages.length
+    ? loadedPages
+        .map(
+          (page) =>
+            `=== ${page.pageType} | ${page.title} | alias=${page.alias} ===\n${page.markdown}`,
+        )
+        .join('\n\n')
+    : '(no existing derived wiki pages)'
+
+  const outputContract = streamAnswer
+    ? `- Return ONLY the requested answer text/Markdown.
+- Do not wrap the answer in JSON and do not add a "pages" mutation list.`
+    : `- Follow the request's requested output shape inside the answer string.
+- Return exactly one JSON object and no text before or after it:
+  {"answer":"<non-empty answer>"}`
+
+  // Keep the large, deterministic catalogue in a dedicated system message.
+  // This mirrors process_queue_once.py: llama.cpp can retain the system-message
+  // prefix in live slot 0 while the selected pages/chat/question change later.
+  const systemPrompt = `You are the read-only query engine for a persistent derived Memex wiki.
+Raw HedgeDoc sources are canonical evidence and must never be edited.
+
+READ-ONLY QUERY CONTRACT
+- Use FULL CURRENT PAGES from the user message as factual wiki evidence.
+- CURRENT DERIVED WIKI CATALOGUE is navigation metadata, not standalone factual evidence.
+- Do not propose, create, revise, or delete wiki pages.
+${outputContract}
+
+CURRENT DERIVED WIKI CATALOGUE
+${catalogueText}`
+
+  // Keep changing material after the stable system prefix. If lexical retrieval
+  // selects the same pages on a follow-up, their full Markdown is also a common
+  // prefix and only the later chat/question suffix needs prompt evaluation.
+  const userPrompt = `FULL CURRENT PAGES
+${pageText}
+
+READ-ONLY REQUEST
+${conversation}`
+
+  return { systemPrompt, userPrompt }
+}
+
 const buildPrompt = (
   conversation: string,
   catalogue: WikiIndexEntry[],
   loadedPages: LoadedWikiPage[],
   readOnly = false,
+  streamAnswer = false,
 ): string => {
   const catalogueText = catalogue.length
     ? catalogue
@@ -494,16 +846,20 @@ const buildPrompt = (
     : '(no existing derived wiki pages)'
 
   if (readOnly) {
+    const outputContract = streamAnswer
+      ? `- Return ONLY the requested answer text/Markdown.
+- Do not wrap the answer in JSON and do not add a "pages" mutation list.`
+      : `- Follow the request's requested output shape inside the answer string.
+- Return exactly one JSON object and no text before or after it:
+  {"answer":"<non-empty answer>"}`
+
     return `You are the read-only query engine for a persistent derived Memex wiki.
 Raw HedgeDoc sources are canonical evidence and must never be edited.
 
 READ-ONLY QUERY CONTRACT
 - Answer the request using the CURRENT DERIVED WIKI CATALOGUE and FULL CURRENT PAGES below.
 - Do not propose, create, revise, or delete wiki pages.
-- Do not return a "pages" mutation list.
-- Follow the request's requested output shape inside the answer string.
-- Return exactly one JSON object and no text before or after it:
-  {"answer":"<non-empty answer>"}
+${outputContract}
 
 CURRENT DERIVED WIKI CATALOGUE
 ${catalogueText}
@@ -810,8 +1166,43 @@ export async function POST(request: NextRequest) {
     const settings = await readMemexModelSettings()
     const catalogue = await readCatalogue()
     const loadedPages = await loadWikiPages(catalogue, targetAliases)
-    const prompt = buildPrompt(conversation, catalogue, loadedPages, body.readOnly === true)
-    const llmResult = await llmChat(prompt, settings, body.readOnly === true)
+    const streamAnswer =
+      body.readOnly === true &&
+      body.stream === true &&
+      settings.streamChatResponses
+    const kvCacheFamily =
+      body.readOnly === true
+        ? normalizeWikiKvCacheFamily(body.kvCacheFamily)
+        : null
+    const readOnlyPrompt =
+      body.readOnly === true
+        ? buildReadOnlyPromptParts(
+            conversation,
+            catalogue,
+            loadedPages,
+            streamAnswer,
+          )
+        : null
+    const prompt = readOnlyPrompt
+      ? readOnlyPrompt.userPrompt
+      : buildPrompt(conversation, catalogue, loadedPages)
+
+    if (streamAnswer) {
+      return llmChatStream(
+        prompt,
+        settings,
+        kvCacheFamily,
+        readOnlyPrompt?.systemPrompt ?? null,
+      )
+    }
+
+    const llmResult = await llmChat(
+      prompt,
+      settings,
+      body.readOnly === true,
+      kvCacheFamily,
+      readOnlyPrompt?.systemPrompt ?? null,
+    )
     const answer = cleanText(llmResult.answer, 'LLM answer', 12000)
     if (body.readOnly === true) {
       return NextResponse.json(

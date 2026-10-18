@@ -34,6 +34,8 @@ interface WikiPageMutation {
   description?: unknown
   tags?: unknown
   sourceAliases?: unknown
+  sourcePages?: unknown
+  sourceAnchor?: unknown
   body?: unknown
   expectedCurrentHash?: unknown
   expectMissing?: unknown
@@ -142,6 +144,35 @@ const normalizeBody = (value: unknown, title: string): string => {
   }
 
   return /^#\s+/m.test(body) ? body : `# ${title}\n\n${body}`
+}
+
+const normalizeSourcePages = (value: unknown, pageType: string): number[] => {
+  if (value === undefined) return []
+  if (pageType !== 'source-summary') {
+    throw new Error('sourcePages is supported only for source-summary pages')
+  }
+  if (!Array.isArray(value)) throw new Error('sourcePages must be an array')
+
+  const pages = value.map((page) => {
+    if (typeof page !== 'number' || !Number.isInteger(page) || page <= 0 || page > 100000) {
+      throw new Error('sourcePages must contain positive integer page numbers')
+    }
+    return page
+  })
+
+  return [...new Set(pages)].sort((left, right) => left - right)
+}
+
+const normalizeSourceAnchor = (value: unknown, pageType: string): string => {
+  if (value === undefined || value === '') return ''
+  if (pageType !== 'source-summary') {
+    throw new Error('sourceAnchor is supported only for source-summary pages')
+  }
+  const anchor = cleanText(value, 'sourceAnchor', 160)
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(anchor)) {
+    throw new Error('sourceAnchor must be a HedgeDoc heading slug')
+  }
+  return anchor
 }
 
 const apiHeaders = (token: string): Record<string, string> => ({
@@ -285,6 +316,8 @@ const buildDerivedPage = (
   tags: string[],
   sourceAliases: string[],
   body: string,
+  sourcePages: number[],
+  sourceAnchor: string,
   provenance: string,
   updatedAt: string,
 ): string => {
@@ -294,8 +327,16 @@ const buildDerivedPage = (
         .join('\n')}`
     : 'sources: []'
   const tagLines = tags.map((tag) => `  - ${tag}`).join('\n')
+  const sourcePageMetadata =
+    pageType === 'source-summary' && sourcePages.length
+      ? `\nmemex_source_pages: [${sourcePages.join(', ')}]`
+      : ''
+  const sourceAnchorMetadata =
+    pageType === 'source-summary' && sourceAnchor
+      ? `\nmemex_source_anchor: ${yamlQuote(sourceAnchor)}`
+      : ''
 
-  return `---\ntype: document\nokf_type: Concept\ntitle: ${yamlQuote(title)}\ndescription: ${yamlQuote(description)}\ntags:\n${tagLines}\nstatus: workarea\n${sourceBlock}\nmemex_page_type: ${yamlQuote(pageType)}\nmemex_updated_at: ${yamlQuote(updatedAt)}\nmemex_change_provenance: ${yamlQuote(provenance)}\n---\n\n${body.trim()}\n`
+  return `---\ntype: document\nokf_type: Concept\ntitle: ${yamlQuote(title)}\ndescription: ${yamlQuote(description)}\ntags:\n${tagLines}\nstatus: workarea\n${sourceBlock}\nmemex_page_type: ${yamlQuote(pageType)}\nmemex_updated_at: ${yamlQuote(updatedAt)}\nmemex_change_provenance: ${yamlQuote(provenance)}${sourcePageMetadata}${sourceAnchorMetadata}\n---\n\n${body.trim()}\n`
 }
 
 const assertDerivedWikiPage = (markdown: string, alias: string): void => {
@@ -388,13 +429,18 @@ export async function POST(request: NextRequest) {
       const description = cleanText(page.description, 'description', 500)
       const tags = normalizeTags(page.tags, pageType)
       const sourceAliases = normalizeSourceAliases(page.sourceAliases)
+      const sourcePages = normalizeSourcePages(page.sourcePages, pageType)
+      const sourceAnchor = normalizeSourceAnchor(page.sourceAnchor, pageType)
+      const normalizedBody = normalizeBody(page.body, title)
       const markdown = buildDerivedPage(
         pageType,
         title,
         description,
         tags,
         sourceAliases,
-        normalizeBody(page.body, title),
+        normalizedBody,
+        sourcePages,
+        sourceAnchor,
         provenance,
         requestTimestamp,
       )
@@ -405,6 +451,8 @@ export async function POST(request: NextRequest) {
         title,
         description,
         sourceAliases,
+        sourcePages,
+        sourceAnchor,
         markdown,
       }
     })

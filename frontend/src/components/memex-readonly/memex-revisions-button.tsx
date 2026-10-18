@@ -507,6 +507,12 @@ export const MemexRevisionsButton: React.FC<MemexRevisionsButtonProps> = ({
               Benchmark
             </Button>
           )}
+          {allowBenchmark && selectedRevisionId !== undefined && (
+            <Button variant='outline-secondary' onClick={() => window.location.assign('/memex-wiki-summary-quality-benchmarks')}>
+              <IconBarChartLine className='me-1' />
+              Wiki Summary Quality
+            </Button>
+          )}
           <Button variant='secondary' onClick={hide}>
             Close
           </Button>

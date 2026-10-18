@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import type { MemexProcessProgress } from '../../../memex-process/process-progress'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 
-const MAX_PENDING = 4
+const SCOPED_RERUN_BATCH_SIZE = 4
 const HISTORY_LIMIT = 50
 const PROCESS_POLL_MS = 3000
 const PROCESS_TIMEOUT_MS = 45 * 60 * 1000
@@ -40,6 +41,43 @@ type ProcessResponse = {
   started?: boolean
   running?: boolean
   aliases?: string[]
+  logTail?: string
+  logBytes?: number
+  serverNow?: string
+  serverTimeZone?: string
+  progress?: MemexProcessProgress | null
+  error?: string
+}
+
+type DoclingBatchResponse = {
+  started?: boolean
+  running?: boolean
+  inputCount?: number
+  convertedCount?: number
+  remainingCount?: number
+  currentFile?: string
+  logTail?: string
+  logBytes?: number
+  logPath?: string | null
+  error?: string
+}
+
+type DoclingIngestItem = {
+  file: string
+  alias: string
+  title: string
+  ingestedAt?: string
+  queuedAt?: string
+}
+
+type DoclingIngestResponse = {
+  started?: boolean
+  running?: boolean
+  readyCount?: number
+  ingestedCount?: number
+  queuedCount?: number
+  remainingCount?: number
+  items?: DoclingIngestItem[]
   logTail?: string
   logBytes?: number
   error?: string
@@ -118,6 +156,23 @@ const prettyTime = (value?: string): string => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
+const systemTimeLabel = (value: string | number, timeZone?: string): string => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleString(undefined, { timeZone: timeZone || undefined })
+}
+
+const durationLabel = (seconds: number | null): string => {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return '—'
+  const rounded = Math.max(0, Math.round(seconds))
+  const hours = Math.floor(rounded / 3600)
+  const minutes = Math.floor((rounded % 3600) / 60)
+  const remainder = rounded % 60
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${remainder}s`
+  return `${remainder}s`
+}
+
 const sleep = async (milliseconds: number): Promise<void> =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
@@ -141,18 +196,35 @@ export const MemexQueueManager = ({
   const [processRunning, setProcessRunning] = useState(false)
   const [processLog, setProcessLog] = useState('')
   const [processLogBytes, setProcessLogBytes] = useState(0)
+  const [processProgress, setProcessProgress] = useState<MemexProcessProgress | null>(null)
+  const [clockNowMs, setClockNowMs] = useState<number | null>(null)
+  const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0)
+  const [serverTimeZone, setServerTimeZone] = useState<string | undefined>(undefined)
+  const [doclingBatch, setDoclingBatch] = useState<DoclingBatchResponse>({})
+  const [doclingIngest, setDoclingIngest] = useState<DoclingIngestResponse>({})
   const [selected, setSelected] = useState<Set<string>>(new Set<string>())
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('Loading Memex queue status…')
   const [error, setError] = useState('')
   const stoppedRef = useRef(false)
   const terminalRef = useRef<HTMLPreElement | null>(null)
+  const doclingTerminalRef = useRef<HTMLPreElement | null>(null)
+  const ingestTerminalRef = useRef<HTMLPreElement | null>(null)
 
   const sourceByAlias = useMemo(
     () => new Map(initialSources.map((source) => [source.alias, source])),
     [initialSources]
   )
   const pendingSet = useMemo(() => new Set(pendingAliases), [pendingAliases])
+  const ingestedItems = useMemo(() => doclingIngest.items ?? [], [doclingIngest.items])
+  const ingestedByAlias = useMemo(
+    () => new Map(ingestedItems.map((item) => [item.alias, item])),
+    [ingestedItems]
+  )
+  const unqueuedIngested = useMemo(
+    () => ingestedItems.filter((item) => !item.queuedAt && !pendingSet.has(item.alias)),
+    [ingestedItems, pendingSet]
+  )
 
   const latestHistoryByAlias = useMemo(() => {
     const latest = new Map<string, QueueRow>()
@@ -172,6 +244,16 @@ export const MemexQueueManager = ({
       })),
     [latestHistoryByAlias, pendingAliases, sourceByAlias]
   )
+
+  const clockMs = clockNowMs === null ? null : clockNowMs + serverClockOffsetMs
+  const runMetricsByAlias = useMemo(
+    () => new Map(processProgress?.completedItems?.map((item) => [item.alias, item] as const) ?? []),
+    [processProgress]
+  )
+  const completionMs = processProgress?.estimatedCompletionAt
+    ? Date.parse(processProgress.estimatedCompletionAt) : Number.NaN
+  const etaSeconds = processRunning && clockMs !== null && Number.isFinite(completionMs)
+    ? Math.max(0, Math.ceil((completionMs - clockMs) / 1000)) : null
 
   const recentCounts = useMemo(() => {
     let processed = 0
@@ -210,19 +292,60 @@ export const MemexQueueManager = ({
     return data
   }, [])
 
+  const fetchDoclingBatchStatus = useCallback(async (): Promise<DoclingBatchResponse> => {
+    const response = await fetch('/memex-docling-batch', { cache: 'no-store' })
+    const data = await responseJson<DoclingBatchResponse>(response)
+    if (!response.ok) {
+      throw new Error(data.error || `Docling batch status HTTP ${response.status}`)
+    }
+    return data
+  }, [])
+
+  const fetchDoclingIngestStatus = useCallback(async (): Promise<DoclingIngestResponse> => {
+    const response = await fetch('/memex-docling-ingest', { cache: 'no-store' })
+    const data = await responseJson<DoclingIngestResponse>(response)
+    if (!response.ok) {
+      throw new Error(data.error || `HedgeDoc ingest status HTTP ${response.status}`)
+    }
+    return data
+  }, [])
+
   const refreshAll = useCallback(async () => {
-    const [nextHistory, nextPending, processStatus] = await Promise.all([
-      fetchQueueHistory(),
-      fetchPending(),
-      fetchProcessStatus()
-    ])
+    const [nextHistory, nextPending, processStatus, nextDoclingBatch, nextDoclingIngest] =
+      await Promise.all([
+        fetchQueueHistory(),
+        fetchPending(),
+        fetchProcessStatus(),
+        fetchDoclingBatchStatus(),
+        fetchDoclingIngestStatus()
+      ])
     if (stoppedRef.current) return
     setHistory(nextHistory)
     setPendingAliases(nextPending)
     setProcessRunning(processStatus.running === true)
     setProcessLog(processStatus.logTail ?? '')
     setProcessLogBytes(processStatus.logBytes ?? 0)
-  }, [fetchPending, fetchProcessStatus, fetchQueueHistory])
+    setProcessProgress(processStatus.progress ?? null)
+    setServerTimeZone(processStatus.serverTimeZone)
+    if (processStatus.serverNow) {
+      const serverMs = Date.parse(processStatus.serverNow)
+      if (Number.isFinite(serverMs)) setServerClockOffsetMs(serverMs - Date.now())
+    }
+    setDoclingBatch(nextDoclingBatch)
+    setDoclingIngest(nextDoclingIngest)
+  }, [
+    fetchDoclingBatchStatus,
+    fetchDoclingIngestStatus,
+    fetchPending,
+    fetchProcessStatus,
+    fetchQueueHistory
+  ])
+
+  useEffect(() => {
+    setClockNowMs(Date.now())
+    const timer = window.setInterval(() => setClockNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     stoppedRef.current = false
@@ -255,8 +378,18 @@ export const MemexQueueManager = ({
     terminalRef.current.scrollTop = terminalRef.current.scrollHeight
   }, [processLog, processRunning])
 
+  useEffect(() => {
+    if (!doclingBatch.running || !doclingTerminalRef.current) return
+    doclingTerminalRef.current.scrollTop = doclingTerminalRef.current.scrollHeight
+  }, [doclingBatch.logTail, doclingBatch.running])
+
+  useEffect(() => {
+    if (!doclingIngest.running || !ingestTerminalRef.current) return
+    ingestTerminalRef.current.scrollTop = ingestTerminalRef.current.scrollHeight
+  }, [doclingIngest.logTail, doclingIngest.running])
+
   const removePending = async (alias: string) => {
-    if (!window.confirm(`Remove ${sourceByAlias.get(alias)?.title ?? alias} from Pending?`)) {
+    if (!window.confirm(`Remove ${sourceByAlias.get(alias)?.title ?? ingestedByAlias.get(alias)?.title ?? alias} from Pending?`)) {
       return
     }
 
@@ -275,6 +408,54 @@ export const MemexQueueManager = ({
       }
       await refreshAll()
       setStatus(data.cancelled ? `${alias} removed from Pending.` : `${alias} was not pending.`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const controlDoclingBatch = async (action: 'start' | 'stop') => {
+    setBusy(true)
+    setError('')
+    setStatus(`${action === 'start' ? 'Starting' : 'Stopping'} Docling batch…`)
+    try {
+      const response = await fetch('/memex-docling-batch', {
+        method: action === 'start' ? 'POST' : 'DELETE',
+        cache: 'no-store'
+      })
+      const data = await responseJson<DoclingBatchResponse>(response)
+      if (!response.ok) {
+        throw new Error(data.error || `Docling batch HTTP ${response.status}`)
+      }
+      await refreshAll()
+      setStatus(action === 'start' ? 'Docling batch started/resumed.' : 'Docling batch stop requested.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const controlDoclingIngest = async (action: 'start' | 'stop') => {
+    setBusy(true)
+    setError('')
+    setStatus(`${action === 'start' ? 'Starting' : 'Stopping'} HedgeDoc batch ingestion…`)
+    try {
+      const response = await fetch('/memex-docling-ingest', {
+        method: action === 'start' ? 'POST' : 'DELETE',
+        cache: 'no-store'
+      })
+      const data = await responseJson<DoclingIngestResponse>(response)
+      if (!response.ok) {
+        throw new Error(data.error || `HedgeDoc ingest HTTP ${response.status}`)
+      }
+      await refreshAll()
+      setStatus(
+        action === 'start'
+          ? 'HedgeDoc batch ingestion started/resumed.'
+          : 'HedgeDoc batch ingestion stop requested.'
+      )
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     } finally {
@@ -436,7 +617,7 @@ export const MemexQueueManager = ({
       const remaining: string[] = [...requested]
 
       while (remaining.length > 0) {
-        const batch: string[] = remaining.splice(0, MAX_PENDING)
+        const batch: string[] = remaining.splice(0, SCOPED_RERUN_BATCH_SIZE)
         batchNumber += 1
         setStatus(
           `Batch ${batchNumber}: queueing ${batch.length} selected source(s) (${completed}/${requested.length} completed)…`
@@ -479,7 +660,7 @@ export const MemexQueueManager = ({
       }
 
       setStatus(
-        `Completed ${completed} selected source(s) in ${batchNumber} scoped batch(es), maximum ${MAX_PENDING} at a time.`
+        `Completed ${completed} selected source(s) in ${batchNumber} scoped batch(es), maximum ${SCOPED_RERUN_BATCH_SIZE} at a time.`
       )
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -544,7 +725,7 @@ export const MemexQueueManager = ({
       <header style={{ marginBottom: '20px' }}>
         <h1 style={{ marginBottom: '8px' }}>Memex Queue Manager</h1>
         <p style={{ margin: 0 }}>
-          Operational dashboard over the existing Memex queue, processor, controlled rerun, and trail-reset routes.
+          Operational dashboard over Docling/HedgeDoc batch ingestion, the Memex queue, processor, controlled rerun, and trail-reset routes.
         </p>
         <nav
           aria-label='Memex queue manager navigation'
@@ -561,7 +742,7 @@ export const MemexQueueManager = ({
 
       <section style={panelStyle}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 24px', alignItems: 'center' }}>
-          <strong>Pending: {pendingAliases.length} / {MAX_PENDING}</strong>
+          <strong>Pending: {pendingAliases.length} (no limit)</strong>
           <strong>Processor: {processRunning ? 'Running' : 'Idle'}</strong>
           <span>Recent processed: {recentCounts.processed}</span>
           <span>Recent cancelled: {recentCounts.cancelled}</span>
@@ -585,12 +766,155 @@ export const MemexQueueManager = ({
       </section>
 
       <section style={panelStyle}>
+        <h2 style={{ marginTop: 0 }}>Docling → HedgeDoc Batch Ingestion</h2>
+        <p>
+          Fixed pipeline stages: PDF batch conversion → DoclingDocument JSON → HedgeDoc notes → Pending queue → existing Process Pending runner. The terminal panes are read-only logs; no arbitrary shell is exposed.
+        </p>
+
+        <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))' }}>
+          <article style={{ border: '1px solid var(--bs-border-color, #dee2e6)', borderRadius: '6px', padding: '12px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+              <h3 style={{ margin: '0 auto 0 0' }}>1. Docling batch</h3>
+              <strong>{doclingBatch.running ? 'Running' : 'Idle'}</strong>
+              <button
+                type='button'
+                style={buttonStyle}
+                disabled={busy || processRunning || doclingBatch.running || doclingIngest.running}
+                onClick={() => void controlDoclingBatch('start')}
+              >
+                Start / Resume
+              </button>
+              <button
+                type='button'
+                style={dangerButtonStyle}
+                disabled={busy || !doclingBatch.running}
+                onClick={() => void controlDoclingBatch('stop')}
+              >
+                Stop
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: '8px' }}>
+              <span>PDFs: {doclingBatch.inputCount ?? 0}</span>
+              <span>JSON ready: {doclingBatch.convertedCount ?? 0}</span>
+              <span>Remaining: {doclingBatch.remainingCount ?? 0}</span>
+            </div>
+            {doclingBatch.currentFile ? (
+              <div style={{ marginTop: '6px' }}>
+                Current: <code>{doclingBatch.currentFile}</code>
+              </div>
+            ) : null}
+            <pre
+              ref={doclingTerminalRef}
+              style={{
+                background: '#111',
+                borderRadius: '6px',
+                color: '#eee',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                fontSize: '12px',
+                lineHeight: 1.45,
+                margin: '10px 0 0',
+                maxHeight: '280px',
+                minHeight: '120px',
+                overflow: 'auto',
+                padding: '12px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
+              }}
+            >
+              {doclingBatch.logTail || 'No Docling batch output has been written yet.'}
+            </pre>
+          </article>
+
+          <article style={{ border: '1px solid var(--bs-border-color, #dee2e6)', borderRadius: '6px', padding: '12px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+              <h3 style={{ margin: '0 auto 0 0' }}>2. HedgeDoc ingestion</h3>
+              <strong>{doclingIngest.running ? 'Running' : 'Idle'}</strong>
+              <button
+                type='button'
+                style={buttonStyle}
+                disabled={busy || processRunning || doclingIngest.running || doclingBatch.running || (doclingIngest.readyCount ?? 0) === 0}
+                onClick={() => void controlDoclingIngest('start')}
+              >
+                Start / Resume
+              </button>
+              <button
+                type='button'
+                style={dangerButtonStyle}
+                disabled={busy || !doclingIngest.running}
+                onClick={() => void controlDoclingIngest('stop')}
+              >
+                Stop
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: '8px' }}>
+              <span>JSON ready: {doclingIngest.readyCount ?? 0}</span>
+              <span>Ingested: {doclingIngest.ingestedCount ?? 0}</span>
+              <span>Queued: {doclingIngest.queuedCount ?? 0}</span>
+              <span>Remaining: {doclingIngest.remainingCount ?? 0}</span>
+            </div>
+            <p style={{ marginBottom: '8px' }}>
+              New notes use the existing default document frontmatter shape, with the JSON filename stem substituted for <code>Untitled</code>, then store the compact DoclingDocument JSON below the heading.
+            </p>
+            <pre
+              ref={ingestTerminalRef}
+              style={{
+                background: '#111',
+                borderRadius: '6px',
+                color: '#eee',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                fontSize: '12px',
+                lineHeight: 1.45,
+                margin: '10px 0 0',
+                maxHeight: '280px',
+                minHeight: '120px',
+                overflow: 'auto',
+                padding: '12px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
+              }}
+            >
+              {doclingIngest.logTail || 'No HedgeDoc ingestion output has been written yet.'}
+            </pre>
+          </article>
+        </div>
+
+        <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+          <strong>3. Automatic Pending queue</strong>
+          <span>
+            All successfully ingested notes are added to Pending automatically, without a four-source limit.
+            {unqueuedIngested.length > 0
+              ? ` ${unqueuedIngested.length} previously ingested note(s) await ingestion resume/backfill.`
+              : ' All ingested notes have queue records.'}
+          </span>
+        </div>
+
+        {ingestedItems.length > 0 ? (
+          <details style={{ marginTop: '12px' }}>
+            <summary style={{ cursor: 'pointer' }}>
+              <strong>Ingested HedgeDoc notes ({ingestedItems.length})</strong>
+            </summary>
+            <div style={{ display: 'grid', gap: '6px', marginTop: '8px', maxHeight: '280px', overflowY: 'auto' }}>
+              {ingestedItems.map((item) => (
+                <div key={item.file}>
+                  <Link href={`/n/${encodeURIComponent(item.alias)}`}>
+                    <strong>{item.title}</strong>
+                  </Link>{' '}
+                  <code>{item.alias}</code>
+                  {item.queuedAt ? ' — queued' : ' — ready for Pending'}
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+      </section>
+
+      <section style={panelStyle}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
-          <h2 style={{ margin: '0 auto 0 0' }}>Pending Queue</h2>
+          <h2 style={{ margin: '0 auto 0 0' }}>4. Pending Queue / Process</h2>
           <button
             type='button'
             style={buttonStyle}
-            disabled={busy || processRunning || pendingAliases.length === 0}
+            disabled={busy || processRunning || doclingBatch.running || doclingIngest.running || pendingAliases.length === 0}
             onClick={() => void processPending()}
           >
             {processRunning ? 'Processing…' : 'Process Pending'}
@@ -604,6 +928,57 @@ export const MemexQueueManager = ({
             Reset Pending for Reprocess
           </button>
           <Link href='/explore/my'>Add Sources</Link>
+        </div>
+
+        {/* Inline status in the existing Pending Queue / Process section (no extra panel). */}
+        <div role='status' aria-live='polite' style={{ marginBottom: '12px', lineHeight: 1.75 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: '20px', rowGap: '2px' }}>
+            <span><strong>Queue:</strong> {pendingAliases.length.toLocaleString()} pending</span>
+            <span><strong>Processor:</strong> {processRunning ? 'Running' : 'Idle'}</span>
+            {processProgress && <span><strong>This run:</strong> {processProgress.completed} completed
+              {processProgress.initialPending !== null ? ` / ${processProgress.initialPending} initially pending` : ''}</span>}
+            {processProgress && <span><strong>Started:</strong> {systemTimeLabel(processProgress.startedAt, serverTimeZone)}</span>}
+            {processProgress && processRunning && clockMs !== null && <span><strong>Elapsed:</strong> {durationLabel(
+              Math.max(0, (clockMs - Date.parse(processProgress.startedAt)) / 1000)
+            )}</span>}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: '20px', rowGap: '2px' }}>
+            <span><strong>Estimated completion:</strong>{' '}
+              {processRunning && processProgress?.stalled ? 'No recent completions — check processor'
+                : processRunning && processProgress?.estimatedCompletionAt && etaSeconds !== null
+                ? `${systemTimeLabel(processProgress.estimatedCompletionAt, serverTimeZone)} (approximately ${durationLabel(etaSeconds)} remaining)`
+                : !processRunning ? '— (processor idle)'
+                : pendingAliases.length === 0 ? 'Queue empty'
+                : 'Calculating from recent completions…'}
+            </span>
+            {processProgress?.recentSecondsPerItem !== null && processProgress?.recentSecondsPerItem !== undefined && (
+              <span><strong>Recent average:</strong> ~{durationLabel(processProgress.recentSecondsPerItem)}/item
+                {' · '}{processProgress.recentSampleCount} samples
+                {' · '}{processProgress.estimateBasis === 'this-run' ? 'current run' : 'recent history'}
+              </span>
+            )}
+          </div>
+          {processProgress?.currentAlias && processRunning && (
+            <div><strong>Current:</strong> <code>{processProgress.currentAlias}</code></div>
+          )}
+          {processProgress?.latestAlias && (
+            <div><strong>Last completed:</strong> <code>{processProgress.latestAlias}</code>
+              {processProgress.lastPromptTokens !== null && processProgress.lastCachedTokens !== null
+                ? ` · ${processProgress.lastPromptTokens.toLocaleString()} prompt / ${processProgress.lastCachedTokens.toLocaleString()} cached tokens` : ''}
+              {processProgress.lastPromptSeconds !== null ? ` · prompt ${durationLabel(processProgress.lastPromptSeconds)}` : ''}
+              {processProgress.lastGenerationSeconds !== null ? ` · generate ${durationLabel(processProgress.lastGenerationSeconds)}` : ''}
+              {processProgress.lastLlmSeconds !== null ? ` · total LLM ${durationLabel(processProgress.lastLlmSeconds)}` : ''}
+              {` · repairs JSON ${processProgress.lastJsonRepairs} / wiki ${processProgress.lastWikiRepairs}`}
+            </div>
+          )}
+          {!processRunning && processProgress?.latestError && (
+            <div style={{ color: 'var(--bs-danger, #dc3545)' }}>
+              <strong>Last failure:</strong> {processProgress.latestError}
+            </div>
+          )}
+          <small style={{ opacity: 0.7 }}>
+            ETA uses completion intervals and the G3 system clock; prompt caching, document length and retries can change it.
+          </small>
         </div>
 
         <div style={{ marginBottom: '14px' }}>
@@ -650,7 +1025,7 @@ export const MemexQueueManager = ({
               >
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                   <Link href={`/n/${encodeURIComponent(alias)}`}>
-                    <strong>{source?.title ?? alias}</strong>
+                    <strong>{source?.title ?? ingestedByAlias.get(alias)?.title ?? alias}</strong>
                   </Link>
                   <code>{alias}</code>
                   {row?.queueReason ? <span>reason: {row.queueReason}</span> : null}
@@ -683,6 +1058,9 @@ export const MemexQueueManager = ({
                   <th style={{ textAlign: 'left', padding: '6px' }}>Status</th>
                   <th style={{ textAlign: 'left', padding: '6px' }}>Source</th>
                   <th style={{ textAlign: 'left', padding: '6px' }}>Reason</th>
+                  <th style={{ textAlign: 'left', padding: '6px' }}>LLM time</th>
+                  <th style={{ textAlign: 'left', padding: '6px' }}>Prompt / cached tokens</th>
+                  <th style={{ textAlign: 'left', padding: '6px' }}>Repairs (JSON / wiki)</th>
                   <th style={{ textAlign: 'left', padding: '6px' }}>Time</th>
                 </tr>
               </thead>
@@ -690,6 +1068,7 @@ export const MemexQueueManager = ({
                 {history.slice(0, HISTORY_LIMIT).map((row, index) => {
                   const alias = aliasOf(row)
                   const source = sourceByAlias.get(alias)
+                  const timing = row.status === 'processed' ? runMetricsByAlias.get(alias) : undefined
                   return (
                     <tr key={`${row.id ?? alias}-${index}`}>
                       <td style={{ padding: '6px', borderTop: '1px solid var(--bs-border-color, #dee2e6)' }}>
@@ -698,7 +1077,7 @@ export const MemexQueueManager = ({
                       <td style={{ padding: '6px', borderTop: '1px solid var(--bs-border-color, #dee2e6)' }}>
                         {alias ? (
                           <Link href={`/n/${encodeURIComponent(alias)}`}>
-                            {source?.title ?? alias}
+                            {source?.title ?? ingestedByAlias.get(alias)?.title ?? alias}
                           </Link>
                         ) : (
                           '—'
@@ -706,6 +1085,16 @@ export const MemexQueueManager = ({
                       </td>
                       <td style={{ padding: '6px', borderTop: '1px solid var(--bs-border-color, #dee2e6)' }}>
                         {row.queueReason ?? '—'}
+                      </td>
+                      <td style={{ padding: '6px', borderTop: '1px solid var(--bs-border-color, #dee2e6)' }}>
+                        {timing ? durationLabel(timing.llmSeconds) : '—'}
+                      </td>
+                      <td style={{ padding: '6px', borderTop: '1px solid var(--bs-border-color, #dee2e6)' }}>
+                        {timing?.promptTokens != null && timing.cachedTokens != null
+                          ? `${timing.promptTokens.toLocaleString()} / ${timing.cachedTokens.toLocaleString()}` : '—'}
+                      </td>
+                      <td style={{ padding: '6px', borderTop: '1px solid var(--bs-border-color, #dee2e6)' }}>
+                        {timing ? `${timing.jsonRepairs} / ${timing.wikiRepairs}` : '—'}
                       </td>
                       <td style={{ padding: '6px', borderTop: '1px solid var(--bs-border-color, #dee2e6)' }}>
                         {prettyTime(timestampOf(row))}
@@ -722,7 +1111,7 @@ export const MemexQueueManager = ({
       <section style={panelStyle}>
         <h2 style={{ marginTop: 0 }}>Controlled Rerun</h2>
         <p>
-          Uses the existing <code>/memex-rerun-batch</code> and scoped <code>/memex-process</code> flow. Any number may be selected; processing runs in batches of up to {MAX_PENDING} and verifies trail scope after each batch.
+          Uses the existing <code>/memex-rerun-batch</code> and scoped <code>/memex-process</code> flow. Any number may be selected; processing runs in batches of up to {SCOPED_RERUN_BATCH_SIZE} and verifies trail scope after each batch.
         </p>
         {sourceError ? (
           <p role='alert' style={{ color: 'var(--bs-danger, #dc3545)' }}>

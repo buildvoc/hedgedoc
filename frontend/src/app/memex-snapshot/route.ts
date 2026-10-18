@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic'
 const MEMEX_INDEX_PATH = '/data/projects/hedgedoc/memex/index.md'
 const HEDGEDOC_NOTES_API = 'http://127.0.0.1:3100/api/v2/notes'
 const MEMEX_SNAPSHOTS_ALIAS = 'memex-snapshots'
+const GOLD_PREFIX = 'memex-gold-summary-'
+const GOLD_ALIAS_PATTERN = /^memex-gold-summary-[a-z0-9][a-z0-9_-]*$/i
 
 interface IndexedSource {
   alias: string
@@ -27,6 +29,12 @@ interface SnapshotSource extends IndexedSource {
   revisionId: string
 }
 
+// Gold notes are benchmark references, never model-input sources or queue inputs.
+interface SnapshotGoldReference extends SnapshotSource {
+  sourceAlias: string
+  scope: string
+}
+
 interface SnapshotManifest {
   schemaVersion?: number
   snapshotType?: string
@@ -34,12 +42,14 @@ interface SnapshotManifest {
   createdAt?: string
   sourceCount?: number
   sources?: SnapshotSource[]
+  goldReferences?: SnapshotGoldReference[]
 }
 
 interface SnapshotBuildMetadata {
   derivedFromSnapshotRevision?: string
   addedSourceAlias?: string
   addedSourceAliases?: string[]
+  goldReferences?: SnapshotGoldReference[]
 }
 
 const assertRevisionId = (revisionId: string): void => {
@@ -173,9 +183,73 @@ const parseSnapshotManifest = (content: string): SnapshotManifest => {
       throw new Error('Snapshot contains an invalid source entry')
     }
     assertRevisionId(source.revisionId)
+    if (source.alias.toLowerCase().startsWith(GOLD_PREFIX)) {
+      throw new Error(`Snapshot contains Gold note ${source.alias} as an ORIGINAL source. This revision is unsafe for Wiki Summary evaluation; select a preceding clean source snapshot. No data was changed.`)
+    }
+  }
+
+  if (manifest.goldReferences !== undefined) {
+    if (!Array.isArray(manifest.goldReferences)) {
+      throw new Error('Snapshot contains an invalid Gold reference list')
+    }
+    for (const ref of manifest.goldReferences) {
+      if (!ref || typeof ref.alias !== 'string' ||
+          !GOLD_ALIAS_PATTERN.test(ref.alias) ||
+          typeof ref.title !== 'string' ||
+          typeof ref.sourceAlias !== 'string' ||
+          !ref.sourceAlias.trim() ||
+          typeof ref.scope !== 'string' ||
+          typeof ref.revisionId !== 'string') {
+        throw new Error('Snapshot contains an invalid Gold reference entry')
+      }
+      assertRevisionId(ref.revisionId)
+      if (!manifest.sources.some((source) => source.alias === ref.sourceAlias)) {
+        throw new Error(`Gold reference ${ref.alias} has no original source in snapshot`)
+      }
+    }
   }
 
   return manifest
+}
+
+// Only read explicit, single-line scalar fields from the frozen HedgeDoc YAML.
+// Never infer a source link from a title or from the Gold summary prose.
+const goldYamlValue = (markdown: string, key: string): string => {
+  const fm = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
+  if (!fm) return ''
+  const row = fm[1].split(/\r?\n/).find((line) => line.startsWith(`${key}:`))
+  if (!row) return ''
+  const raw = row.slice(key.length + 1).trim()
+  if (raw.startsWith('"')) {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      return typeof parsed === 'string' ? parsed.trim() : ''
+    } catch { return '' }
+  }
+  if (raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1).replaceAll("''", "'").trim()
+  }
+  return raw.replace(/\s+#.*$/, '').trim()
+}
+
+const fetchGoldReference = async (
+  alias: string,
+  token: string,
+): Promise<SnapshotGoldReference> => {
+  if (!GOLD_ALIAS_PATTERN.test(alias)) {
+    throw new Error(`Invalid Gold reference alias: ${alias}`)
+  }
+  const revisionId = await fetchLatestRevisionId(alias, token)
+  const markdown = await fetchRevisionContent(alias, revisionId, token)
+  const role = goldYamlValue(markdown, 'memex_benchmark_role')
+  const sourceAlias = goldYamlValue(markdown, 'memex_benchmark_source_alias')
+  const scope = goldYamlValue(markdown, 'memex_benchmark_source_scope')
+  const title = goldYamlValue(markdown, 'title') || alias
+  if (role !== 'gold-reference' || !sourceAlias || !scope ||
+      sourceAlias.startsWith(GOLD_PREFIX)) {
+    throw new Error(`Gold note ${alias} needs memex_benchmark_role: gold-reference, memex_benchmark_source_alias and memex_benchmark_source_scope in YAML`)
+  }
+  return { alias, title, revisionId, sourceAlias, scope }
 }
 
 const yamlString = (value: string): string => JSON.stringify(value)
@@ -188,6 +262,7 @@ const buildSnapshotMarkdown = (
 ): string => {
   const addedSourceAliases = metadata.addedSourceAliases ??
     (metadata.addedSourceAlias ? [metadata.addedSourceAlias] : [])
+  const goldReferences = metadata.goldReferences ?? []
 
   const manifest = {
     schemaVersion: 1,
@@ -209,6 +284,7 @@ const buildSnapshotMarkdown = (
       title,
       revisionId,
     })),
+    ...(goldReferences.length > 0 ? { goldReferences } : {}),
   }
 
   const sourceRows = sources
@@ -217,6 +293,13 @@ const buildSnapshotMarkdown = (
         `| ${title.replaceAll('|', '\\|')} | \`${alias}\` | \`${revisionId}\` |`,
     )
     .join('\n')
+
+  const goldRows = goldReferences.map(({ alias, sourceAlias, revisionId }) =>
+    `| \`${alias}\` | \`${sourceAlias}\` | \`${revisionId}\` |`,
+  ).join('\n')
+  const goldSection = goldReferences.length > 0
+    ? `\n## Gold References (benchmark only; never model inputs)\n\n| Gold alias | Original source alias | Frozen revision |\n| --- | --- | --- |\n${goldRows}\n`
+    : ''
 
   const derivedFrontmatter = metadata.derivedFromSnapshotRevision
     ? `snapshot_derived_from_revision: ${yamlString(metadata.derivedFromSnapshotRevision)}\n`
@@ -233,7 +316,7 @@ const buildSnapshotMarkdown = (
     ? `\nAdded source aliases: ${addedSourceAliases.map((alias) => `\`${alias}\``).join(', ')}\n`
     : ''
 
-  return `---\ntype: document\ntitle: "Memex Snapshots"\ntags: [memex, snapshots, revisions]\nstatus: workarea\nsnapshot_name: ${yamlString(name)}\nsnapshot_created_at: ${yamlString(createdAt)}\nsnapshot_source_count: ${sources.length}\n${derivedFrontmatter}${addedSourceFrontmatter}---\n\n# Memex Snapshot: ${name}\n\nCreated: ${createdAt}\n\nSources: ${sources.length}\n${derivedBody}${addedSourcesBody}\nThis snapshot contains only the indexed HedgeDoc source set and exact source revisions. Generated trails, associations, and nodeBook data are intentionally excluded.\n\n## Source Manifest\n\n\`\`\`json\n${JSON.stringify(manifest, null, 2)}\n\`\`\`\n\n## Sources\n\n| Title | Alias | HedgeDoc revision |\n| --- | --- | --- |\n${sourceRows}\n`
+  return `---\ntype: document\ntitle: "Memex Snapshots"\ntags: [memex, snapshots, revisions]\nstatus: workarea\nsnapshot_name: ${yamlString(name)}\nsnapshot_created_at: ${yamlString(createdAt)}\nsnapshot_source_count: ${sources.length}\n${derivedFrontmatter}${addedSourceFrontmatter}---\n\n# Memex Snapshot: ${name}\n\nCreated: ${createdAt}\n\nSources: ${sources.length}\n${derivedBody}${addedSourcesBody}\nThis snapshot contains only the indexed HedgeDoc source set and exact source revisions. Generated trails, associations, and nodeBook data are intentionally excluded.\n\n## Source Manifest\n\n\`\`\`json\n${JSON.stringify(manifest, null, 2)}\n\`\`\`\n\n## Sources\n\n| Title | Alias | HedgeDoc revision |\n| --- | --- | --- |\n${sourceRows}\n${goldSection}`
 }
 
 const updateSnapshotsNote = async (
@@ -266,10 +349,12 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const baseRevision = url.searchParams.get('baseRevision')?.trim() ?? ''
     const indexedOnly = url.searchParams.get('indexed') === '1'
+    const goldReferenceAlias = url.searchParams.get('goldReferenceAlias')?.trim() ?? ''
 
     if (indexedOnly) {
       const indexText = await readFile(MEMEX_INDEX_PATH, 'utf8')
       const indexedSources = extractIndexedSources(indexText)
+        .filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX))
         .sort((left, right) => left.title.localeCompare(right.title))
 
       return NextResponse.json(
@@ -302,19 +387,32 @@ export async function GET(request: Request) {
       token,
     )
     const indexedSources = extractIndexedSources(indexText)
+      .filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX))
     const manifest = parseSnapshotManifest(baseContent)
     const baseSources = manifest.sources as SnapshotSource[]
     const baseAliases = new Set(baseSources.map((source) => source.alias.trim()))
     const candidates = indexedSources
       .filter((source) => !baseAliases.has(source.alias.trim()))
       .sort((left, right) => left.title.localeCompare(right.title))
+    const goldReferences = manifest.goldReferences ?? []
+    const goldReferencePreview = goldReferenceAlias
+      ? await fetchGoldReference(goldReferenceAlias, token)
+      : undefined
+    if (goldReferencePreview &&
+        !baseAliases.has(goldReferencePreview.sourceAlias) &&
+        !indexedSources.some((source) => source.alias === goldReferencePreview.sourceAlias)) {
+      throw new Error(`Gold note ${goldReferenceAlias} links to ${goldReferencePreview.sourceAlias}, which is neither in the snapshot nor in the indexed source set`)
+    }
 
     return NextResponse.json(
       {
         baseRevision,
         baseName: manifest.name?.trim() || baseRevision,
         baseSourceCount: baseSources.length,
+        baseSourceAliases: [...baseAliases],
         candidates,
+        goldReferences,
+        ...(goldReferencePreview ? { goldReferencePreview } : {}),
       },
       {
         headers: {
@@ -345,6 +443,7 @@ export async function POST(request: Request) {
       baseRevision?: unknown
       sourceAlias?: unknown
       sourceAliases?: unknown
+      goldReferenceAliases?: unknown
       empty?: unknown
     }
     const requestedName = typeof body.name === 'string' ? body.name.trim() : ''
@@ -361,8 +460,13 @@ export async function POST(request: Request) {
         ? [legacySourceAlias]
         : []
     const sourceAliases = [...new Set(requestedSourceAliases)]
+    const requestedGoldAliases = Array.isArray(body.goldReferenceAliases)
+      ? body.goldReferenceAliases.filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim()).filter(Boolean)
+      : []
+    const goldReferenceAliases = [...new Set(requestedGoldAliases)]
     const creatingEmptySnapshot = body.empty === true
-    const extendingSnapshot = Boolean(baseRevision || sourceAliases.length > 0)
+    const extendingSnapshot = Boolean(baseRevision || sourceAliases.length > 0 || goldReferenceAliases.length > 0)
     const createdAt = new Date().toISOString()
     const name = requestedName || `Snapshot ${createdAt}`
 
@@ -380,9 +484,23 @@ export async function POST(request: Request) {
       )
     }
 
-    if (extendingSnapshot && (!baseRevision || sourceAliases.length === 0)) {
+    if (extendingSnapshot && (!baseRevision || (sourceAliases.length === 0 && goldReferenceAliases.length === 0))) {
       return NextResponse.json(
-        { error: 'baseRevision and at least one source alias are required to extend a snapshot' },
+        { error: 'baseRevision and at least one source or Gold reference alias are required to extend a snapshot' },
+        { status: 400 },
+      )
+    }
+
+    if (goldReferenceAliases.length > 100 || goldReferenceAliases.some((alias) => !GOLD_ALIAS_PATTERN.test(alias))) {
+      return NextResponse.json(
+        { error: 'At most 100 valid memex-gold-summary- aliases can be selected' },
+        { status: 400 },
+      )
+    }
+
+    if (sourceAliases.some((alias) => alias.toLowerCase().startsWith(GOLD_PREFIX))) {
+      return NextResponse.json(
+        { error: 'Gold notes must be passed as goldReferenceAliases, never as original sources' },
         { status: 400 },
       )
     }
@@ -402,6 +520,7 @@ export async function POST(request: Request) {
     const indexedSources = creatingEmptySnapshot
       ? []
       : extractIndexedSources(await readFile(MEMEX_INDEX_PATH, 'utf8'))
+        .filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX))
     let sources: SnapshotSource[] = []
     let buildMetadata: SnapshotBuildMetadata = {}
 
@@ -418,6 +537,15 @@ export async function POST(request: Request) {
       const existingAliases = new Set(
         baseSources.map((source) => source.alias.trim()),
       )
+      const baseGoldReferences = manifest.goldReferences ?? []
+      const baseGoldAliases = new Set(baseGoldReferences.map((ref) => ref.alias))
+      const duplicateGoldAliases = goldReferenceAliases.filter((alias) => baseGoldAliases.has(alias))
+      if (duplicateGoldAliases.length > 0) {
+        return NextResponse.json(
+          { error: `Gold reference already attached to snapshot: ${duplicateGoldAliases.join(', ')}` },
+          { status: 409 },
+        )
+      }
 
       const duplicateAliases = sourceAliases.filter((alias) => existingAliases.has(alias))
       if (duplicateAliases.length > 0) {
@@ -460,10 +588,22 @@ export async function POST(request: Request) {
         })),
         ...newSources,
       ]
+      const newGoldReferences = await Promise.all(
+        goldReferenceAliases.map((alias) => fetchGoldReference(alias, token)),
+      )
+      for (const reference of newGoldReferences) {
+        if (!sources.some((source) => source.alias === reference.sourceAlias)) {
+          return NextResponse.json(
+            { error: `Gold note ${reference.alias} links to ${reference.sourceAlias}; add that original indexed source to this snapshot first (or in this same extension)` },
+            { status: 400 },
+          )
+        }
+      }
       buildMetadata = {
         derivedFromSnapshotRevision: baseRevision,
         ...(newSources.length === 1 ? { addedSourceAlias: newSources[0].alias } : {}),
         addedSourceAliases: newSources.map((source) => source.alias),
+        goldReferences: [...baseGoldReferences, ...newGoldReferences],
       }
     } else {
       for (const source of indexedSources) {
@@ -492,6 +632,7 @@ export async function POST(request: Request) {
       name,
       createdAt,
       sourceCount: sources.length,
+      goldReferenceCount: buildMetadata.goldReferences?.length ?? 0,
       snapshotRevision,
       ...(creatingEmptySnapshot ? { empty: true } : {}),
       ...(buildMetadata.derivedFromSnapshotRevision

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { closeSync, fstatSync, openSync, readFileSync, readSync, writeSync } from 'node:fs'
 import { spawn, spawnSync } from 'node:child_process'
+import { summarizeMemexProgress, type ProcessedQueueRow } from './process-progress'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,6 +11,8 @@ const RUNNER = `${HD}/memex/process_queue_batch.py`
 const LOG = '/tmp/memex-process-queue.log'
 const SCOPED_BATCH_MAX = 4
 const LOG_TAIL_BYTES = 64 * 1024
+const PROGRESS_LOG_BYTES = 8 * 1024 * 1024
+const QUEUE = process.env.MEMEX_QUEUE_PATH ?? `${HD}/memex/queue.jsonl`
 
 function getMemexEnv(): Record<string, string> {
   const result: Record<string, string> = {}
@@ -76,6 +79,36 @@ function getLogTail(): { logTail: string; logBytes: number } {
   }
 }
 
+function getProgressLog(): string {
+  try {
+    const fd = openSync(LOG, 'r')
+    try {
+      const size = fstatSync(fd).size
+      const length = Math.min(size, PROGRESS_LOG_BYTES)
+      const buffer = Buffer.alloc(length)
+      if (length > 0) readSync(fd, buffer, 0, length, size - length)
+      return buffer.toString('utf8')
+    } finally {
+      closeSync(fd)
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+    throw error
+  }
+}
+
+function getQueueRows(): ProcessedQueueRow[] {
+  try {
+    return readFileSync(QUEUE, 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as ProcessedQueueRow)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+}
+
 function normalizeAliases(value: unknown): string[] {
   if (!Array.isArray(value)) return []
 
@@ -90,8 +123,18 @@ function normalizeAliases(value: unknown): string[] {
 }
 
 export async function GET() {
+  const running = getRunning()
+  const serverNowMs = Date.now()
+  const queue = getQueueRows()
+  const remaining = queue.filter((row) => row.status === 'pending').length
+  const progress = summarizeMemexProgress(
+    getProgressLog(), queue, remaining, running, serverNowMs
+  )
   return NextResponse.json({
-    running: getRunning(),
+    running,
+    serverNow: new Date(serverNowMs).toISOString(),
+    serverTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    progress,
     ...getLogTail()
   })
 }

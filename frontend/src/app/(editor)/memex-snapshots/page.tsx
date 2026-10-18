@@ -50,7 +50,8 @@ export default async function MemexSnapshotsPage() {
           <Link href='/memex-snapshots'>Snapshots</Link>
           <Link href='/memex-settings'>Model Settings</Link>
           <Link href='/memex-association-review'>Association Review</Link>
-          <Link href='/memex-association-benchmarks'>Benchmarks</Link>
+          <Link href='/memex-association-benchmarks'>Association Benchmarks</Link>
+          <Link href='/memex-wiki-summary-quality-benchmarks'>Wiki Summary Quality</Link>
           <MemexCreateSnapshotButton />
           <Link href={`/n/${MEMEX_SNAPSHOTS_ALIAS}`}>Edit Main</Link>
           <Link href='/explore/my?memex=pending'>Process Pending</Link>

@@ -20,6 +20,8 @@ type WikiPage = {
   pageType: string
   title: string
   description?: string
+  sourcePages?: number[]
+  sourceAnchor?: string
 }
 
 type QueryResult = {
@@ -32,6 +34,14 @@ type QueryResult = {
   provider?: string
   retrieval?: 'llm' | 'lexical'
 }
+
+type QueryStreamMetadata = Omit<QueryResult, 'answer'>
+
+type QueryStreamEvent =
+  | ({ type: 'meta' } & QueryStreamMetadata)
+  | { type: 'delta'; delta: string }
+  | { type: 'done' }
+  | { type: 'error'; error: string }
 
 type ChatMessage = {
   id: string
@@ -81,6 +91,30 @@ const FORMATS: Array<{ value: OutputFormat; label: string }> = [
 
 const newId = (): string =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
+const formatSourcePages = (pages: number[]): string => {
+  const sorted = [...new Set(pages)]
+    .filter((page) => Number.isInteger(page) && page > 0)
+    .sort((left, right) => left - right)
+  const ranges: string[] = []
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const start = sorted[index]
+    let end = start
+
+    while (index + 1 < sorted.length && sorted[index + 1] === end + 1) {
+      index += 1
+      end = sorted[index]
+    }
+
+    ranges.push(start === end ? `${start}` : `${start}–${end}`)
+  }
+
+  return ranges.join(', ')
+}
+
+const formatReferenceTitle = (title: string): string =>
+  title.replace(/^\s*\d+_[a-z]\s+/i, '').trim() || title
 
 const renderInline = (content: string, keyPrefix: string): ReactNode[] => {
   const tokenPattern =
@@ -287,7 +321,7 @@ export const MemexWikiQueryPanel = ({ standalone = false }: Props) => {
   const canCommit = Boolean(filing?.previewToken) && !busy
 
   useEffect(() => {
-    if (!messagesEndRef.current || busy) return
+    if (!messagesEndRef.current) return
 
     const frame = window.requestAnimationFrame(() => {
       messagesEndRef.current?.scrollIntoView({
@@ -387,6 +421,105 @@ export const MemexWikiQueryPanel = ({ standalone = false }: Props) => {
     return body as Record<string, unknown>
   }
 
+  const callStreamingQuery = async (
+    payload: Record<string, unknown>,
+    onStart: (metadata: QueryStreamMetadata) => void,
+    onDelta: (delta: string) => void,
+  ): Promise<QueryResult> => {
+    const response = await fetch('/memex-wiki-query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('application/x-ndjson')) {
+      const body = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          typeof body?.error === 'string'
+            ? body.error
+            : `Memex wiki query failed with HTTP ${response.status}`,
+        )
+      }
+      if (!body || typeof body !== 'object') {
+        throw new Error('Memex wiki query returned an invalid response')
+      }
+      return body as QueryResult
+    }
+
+    if (!response.ok || !response.body) {
+      throw new Error(`Memex wiki query failed with HTTP ${response.status}`)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let answer = ''
+    const streamState: { metadata?: QueryStreamMetadata } = {}
+
+    const consumeLine = (line: string): void => {
+      const trimmed = line.trim()
+      if (!trimmed) return
+
+      const event = JSON.parse(trimmed) as QueryStreamEvent
+      if (event.type === 'meta') {
+        const meta: QueryStreamMetadata = {
+          format: event.format,
+          aliases: event.aliases,
+          pages: event.pages,
+          readOnly: event.readOnly,
+          model: event.model,
+          provider: event.provider,
+          retrieval: event.retrieval,
+        }
+        streamState.metadata = meta
+        onStart(meta)
+        return
+      }
+      if (event.type === 'delta') {
+        answer += event.delta
+        onDelta(event.delta)
+        return
+      }
+      if (event.type === 'error') {
+        throw new Error(event.error)
+      }
+    }
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        let newline = buffer.indexOf('\n')
+        while (newline >= 0) {
+          const line = buffer.slice(0, newline)
+          buffer = buffer.slice(newline + 1)
+          consumeLine(line)
+          newline = buffer.indexOf('\n')
+        }
+      }
+
+      buffer += decoder.decode()
+      if (buffer.trim()) consumeLine(buffer)
+    } finally {
+      reader.releaseLock()
+    }
+
+    const metadata = streamState.metadata
+    if (!metadata) {
+      throw new Error('Memex streaming response did not include metadata')
+    }
+
+    return {
+      ...metadata,
+      answer: answer.trim(),
+    }
+  }
+
   const publishGraphFocus = async (pages: WikiPage[]) => {
     try {
       await fetch('/memex-wiki-graph-focus', {
@@ -432,12 +565,44 @@ ${question}`
     setFilingTargetId('')
 
     try {
-      const body = (await callQuery({
-        action: 'query',
-        question: queryQuestion,
-        history,
-        format,
-      })) as unknown as QueryResult
+      const assistantId = newId()
+      let streaming = false
+
+      const body = await callStreamingQuery(
+        {
+          action: 'query',
+          question: queryQuestion,
+          history,
+          format,
+        },
+        (metadata) => {
+          streaming = true
+          setMessages((current) => [
+            ...current,
+            {
+              id: assistantId,
+              role: 'assistant',
+              content: '',
+              question,
+              format: metadata.format,
+              aliases: Array.isArray(metadata.aliases) ? metadata.aliases : [],
+              pages: Array.isArray(metadata.pages) ? metadata.pages : [],
+              model: metadata.model,
+              provider: metadata.provider,
+              retrieval: metadata.retrieval,
+            },
+          ])
+        },
+        (delta) => {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId
+                ? { ...message, content: message.content + delta }
+                : message,
+            ),
+          )
+        },
+      )
 
       const answer =
         typeof body.answer === 'string' ? body.answer.trim() : ''
@@ -446,7 +611,7 @@ ${question}`
       }
 
       const assistantMessage: ChatMessage = {
-        id: newId(),
+        id: assistantId,
         role: 'assistant',
         content: answer,
         question,
@@ -458,7 +623,15 @@ ${question}`
         retrieval: body.retrieval,
       }
 
-      setMessages((current) => [...current, assistantMessage])
+      if (streaming) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId ? assistantMessage : message,
+          ),
+        )
+      } else {
+        setMessages((current) => [...current, assistantMessage])
+      }
       void publishGraphFocus(assistantMessage.pages ?? [])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -729,6 +902,7 @@ ${question}`
           alignContent: 'start',
           gap: '0.9rem',
           paddingRight: standalone ? 0 : '0.25rem',
+          paddingBottom: standalone ? '5rem' : undefined,
         }}>
         {messages.length === 0 ? (
           <div
@@ -841,7 +1015,7 @@ ${question}`
                             paddingRight: '4.4rem',
                             lineHeight: '1.7rem',
                           }}>
-                          Show references ({message.pages.length})
+                          References ({message.pages.length})
                         </summary>
                         <div
                           style={{
@@ -858,24 +1032,31 @@ ${question}`
                                   '1px solid var(--bs-border-color, #ced4da)',
                                 paddingTop: '0.45rem',
                               }}>
+                              <div>
+                                <strong>{formatReferenceTitle(page.title)}</strong>
+                              </div>
                               <div
                                 style={{
+                                  marginTop: '0.15rem',
                                   display: 'flex',
-                                  justifyContent: 'space-between',
-                                  gap: '0.75rem',
+                                  gap: '0.4rem',
                                   flexWrap: 'wrap',
                                   alignItems: 'baseline',
+                                  opacity: 0.82,
                                 }}>
-                                <strong>{page.title}</strong>
                                 <a
-                                  href={`/n/${encodeURIComponent(page.alias)}`}
+                                  href={`/n/${encodeURIComponent(page.alias)}${
+                                    page.sourceAnchor
+                                      ? `#${encodeURIComponent(page.sourceAnchor)}`
+                                      : ''
+                                  }`}
                                   target='_blank'
                                   rel='noreferrer'>
                                   Open source
                                 </a>
-                              </div>
-                              <div style={{ marginTop: '0.15rem', opacity: 0.7 }}>
-                                {page.pageType} · {page.alias}
+                                {page.sourcePages?.length ? (
+                                  <span>· Pages: {formatSourcePages(page.sourcePages)}</span>
+                                ) : null}
                               </div>
                               {page.description ? (
                                 <div style={{ marginTop: '0.2rem', opacity: 0.8 }}>
@@ -1058,7 +1239,10 @@ ${question}`
           </div>
         ) : null}
 
-        <div ref={messagesEndRef} />
+        <div
+          ref={messagesEndRef}
+          style={{ scrollMarginBottom: standalone ? '5rem' : undefined }}
+        />
       </div>
 
       <div

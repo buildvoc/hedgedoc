@@ -10,6 +10,8 @@ export interface MemexModelSettings {
   defaultModel: string
   numCtx: number
   maxPromptChars: number
+  streamChatResponses: boolean
+  llamacppCachePrompt: boolean
   timeoutSeconds: number
   temperature: number
   ollamaFlashAttention: boolean
@@ -26,6 +28,8 @@ export const DEFAULT_MEMEX_MODEL_SETTINGS: MemexModelSettings = {
   defaultModel: '/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf',
   numCtx: 65536,
   maxPromptChars: 80000,
+  streamChatResponses: true,
+  llamacppCachePrompt: true,
   timeoutSeconds: 600,
   temperature: 0.35,
   ollamaFlashAttention: true,
@@ -127,6 +131,14 @@ export const normalizeMemexModelSettings = (
       defaults.maxPromptChars,
       1000,
       2000000,
+    ),
+    streamChatResponses: normalizeBoolean(
+      row.streamChatResponses,
+      defaults.streamChatResponses,
+    ),
+    llamacppCachePrompt: normalizeBoolean(
+      row.llamacppCachePrompt,
+      defaults.llamacppCachePrompt,
     ),
     timeoutSeconds: integerInRange(
       row.timeoutSeconds,

@@ -12,6 +12,8 @@ interface MemexModelSettings {
   defaultModel: string
   numCtx: number
   maxPromptChars: number
+  streamChatResponses: boolean
+  llamacppCachePrompt: boolean
   timeoutSeconds: number
   temperature: number
   ollamaFlashAttention: boolean
@@ -43,6 +45,8 @@ const emptySettings: MemexModelSettings = {
   defaultModel: '/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf',
   numCtx: 65536,
   maxPromptChars: 80000,
+  streamChatResponses: true,
+  llamacppCachePrompt: true,
   timeoutSeconds: 600,
   temperature: 0.35,
   ollamaFlashAttention: true,
@@ -355,6 +359,49 @@ export const MemexModelSettingsForm: React.FC = () => {
               />
             </Form.Group>
           </Col>
+          <Col md={8}>
+            <Form.Group controlId='memex-stream-chat-responses'>
+              <Form.Check
+                checked={settings.streamChatResponses}
+                label='Stream Wiki Chat responses'
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    streamChatResponses: event.target.checked,
+                  }))
+                }
+                type='switch'
+              />
+              <Form.Text className='text-muted'>
+                Streams read-only /memex-wiki/chat answers as they are generated.
+                Wiki maintenance, filing previews and commits remain buffered for
+                validation.
+              </Form.Text>
+            </Form.Group>
+          </Col>
+          {settings.provider === 'llamacpp' ? (
+            <Col md={8}>
+              <Form.Group controlId='memex-llamacpp-cache-prompt'>
+                <Form.Check
+                  checked={settings.llamacppCachePrompt}
+                  label='Reuse llama.cpp KV / prompt cache'
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      llamacppCachePrompt: event.target.checked,
+                    }))
+                  }
+                  type='switch'
+                />
+                <Form.Text className='text-muted'>
+                  Sends llama.cpp <code>cache_prompt</code> for Wiki Chat requests
+                  on slot 0. Matching prompt prefixes can reuse KV state and reduce
+                  prompt-evaluation time. This does not change the server context
+                  window or KV cache precision.
+                </Form.Text>
+              </Form.Group>
+            </Col>
+          ) : null}
         </Row>
 
         {settings.provider === 'ollama' ? (

@@ -19,6 +19,7 @@ interface SnapshotExtendOptions {
   baseName: string
   baseSourceCount: number
   candidates: SnapshotExtendCandidate[]
+  goldReferences?: { alias: string }[]
 }
 
 interface IndexedMemexSourcesResponse {
@@ -88,13 +89,18 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
+  const selectedGoldNotes = useMemo(
+    () => selectedNotes.filter((note) => note.alias.startsWith('memex-gold-summary-')),
+    [selectedNotes]
+  )
+
   const indexedSelectedNotes = useMemo(
-    () => selectedNotes.filter((note) => indexedAliases.has(note.alias)),
+    () => selectedNotes.filter((note) => !note.alias.startsWith('memex-gold-summary-') && indexedAliases.has(note.alias)),
     [indexedAliases, selectedNotes]
   )
 
   const nonIndexedSelectedNotes = useMemo(
-    () => selectedNotes.filter((note) => !indexedAliases.has(note.alias)),
+    () => selectedNotes.filter((note) => !note.alias.startsWith('memex-gold-summary-') && !indexedAliases.has(note.alias)),
     [indexedAliases, selectedNotes]
   )
 
@@ -103,6 +109,12 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
     const candidateAliases = new Set(options.candidates.map((candidate) => candidate.alias))
     return indexedSelectedNotes.filter((note) => candidateAliases.has(note.alias))
   }, [indexedSelectedNotes, options])
+
+  const eligibleGoldNotes = useMemo(() => {
+    if (!options) return []
+    const frozenGoldAliases = new Set((options.goldReferences ?? []).map((ref) => ref.alias))
+    return selectedGoldNotes.filter((note) => !frozenGoldAliases.has(note.alias))
+  }, [options, selectedGoldNotes])
 
   const alreadyInBaseNotes = useMemo(() => {
     if (!options) return []
@@ -150,8 +162,10 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
       setOptions(loaded)
       const candidateAliases = new Set(loaded.candidates.map((candidate) => candidate.alias))
       const eligibleCount = indexedSelectedNotes.filter((note) => candidateAliases.has(note.alias)).length
+      const existingGoldAliases = new Set((loaded.goldReferences ?? []).map((ref) => ref.alias))
+      const goldCount = selectedGoldNotes.filter((note) => !existingGoldAliases.has(note.alias)).length
       setSnapshotName(
-        `${loaded.baseName} + ${eligibleCount} HedgeDoc${eligibleCount === 1 ? '' : 's'}`.slice(
+        `${loaded.baseName} + ${eligibleCount} sources + ${goldCount} Gold references`.slice(
           0,
           120
         )
@@ -161,10 +175,10 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
     } finally {
       setLoadingRevision(false)
     }
-  }, [indexedSelectedNotes])
+  }, [indexedSelectedNotes, selectedGoldNotes])
 
   const extendSnapshot = useCallback(async () => {
-    if (!baseRevision || !options || eligibleNotes.length === 0 || !snapshotName.trim()) return
+    if (!baseRevision || !options || (eligibleNotes.length === 0 && eligibleGoldNotes.length === 0) || !snapshotName.trim()) return
 
     setBusy(true)
     setMessage('')
@@ -179,7 +193,8 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
         body: JSON.stringify({
           name: snapshotName.trim(),
           baseRevision,
-          sourceAliases: eligibleNotes.map((note) => note.alias)
+          sourceAliases: eligibleNotes.map((note) => note.alias),
+          goldReferenceAliases: eligibleGoldNotes.map((note) => note.alias)
         })
       })
       const body = (await response.json().catch(() => ({}))) as {
@@ -194,7 +209,7 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
       }
 
       setMessage(
-        `Created derived snapshot with ${body.sourceCount ?? options.baseSourceCount + eligibleNotes.length} sources.`
+        `Created derived snapshot with ${body.sourceCount ?? options.baseSourceCount + eligibleNotes.length} original sources and frozen Gold references.`
       )
       onClearSelection()
     } catch (err) {
@@ -202,7 +217,7 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
     } finally {
       setBusy(false)
     }
-  }, [baseRevision, eligibleNotes, onClearSelection, options, snapshotName])
+  }, [baseRevision, eligibleNotes, eligibleGoldNotes, onClearSelection, options, snapshotName])
 
   const close = () => {
     if (!busy) setShow(false)
@@ -231,15 +246,18 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
         <Modal.Body>
           <p>
             Create a new snapshot from an existing frozen revision plus the HedgeDocs
-            selected on <strong>My Notes</strong>. Only notes in the current indexed Memex source
-            set are eligible. Existing source revision UUIDs stay unchanged; each added HedgeDoc is
-            frozen at its current revision.
+            selected on <strong>My Notes</strong>. Original sources must be indexed.
+            Selected <code>memex-gold-summary-</code> notes are attached separately as
+            frozen benchmark references and never passed to the summary model or Memex queue.
+            Existing source revisions remain unchanged.
           </p>
 
           <Alert variant='secondary'>
             Selected notes: <strong>{selectedNotes.length}</strong>
             <br />
             Current indexed Memex sources selected: <strong>{indexedSelectedNotes.length}</strong>
+            <br />
+            Gold reference notes selected: <strong>{selectedGoldNotes.length}</strong>
           </Alert>
 
           {nonIndexedSelectedNotes.length > 0 && (
@@ -274,12 +292,14 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
 
           {options && (
             <>
-              <Alert variant={eligibleNotes.length > 0 ? 'info' : 'warning'}>
+              <Alert variant={eligibleNotes.length + eligibleGoldNotes.length > 0 ? 'info' : 'warning'}>
                 Base: <strong>{options.baseName}</strong> ({options.baseSourceCount} frozen sources)
                 <br />
-                Eligible selected additions: <strong>{eligibleNotes.length}</strong>
+                Eligible original sources: <strong>{eligibleNotes.length}</strong>
                 <br />
-                New source count: <strong>{options.baseSourceCount + eligibleNotes.length}</strong>
+                Eligible Gold references: <strong>{eligibleGoldNotes.length}</strong>
+                <br />
+                New original source count: <strong>{options.baseSourceCount + eligibleNotes.length}</strong>
               </Alert>
 
               {alreadyInBaseNotes.length > 0 && (
@@ -299,6 +319,17 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
                   onChange={(event) => setSnapshotName(event.target.value)}
                 />
               </Form.Group>
+
+              {eligibleGoldNotes.length > 0 && (
+                <div className='small mb-3'>
+                  <strong>Frozen Gold references (benchmark-only):</strong>
+                  <ul className='mb-0 mt-1'>
+                    {eligibleGoldNotes.map((note) => (
+                      <li key={note.alias}>{note.title || note.alias}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {eligibleNotes.length > 0 && (
                 <div className='small mb-3'>
@@ -328,7 +359,7 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
               loadingRevision ||
               !baseRevision ||
               !options ||
-              eligibleNotes.length === 0 ||
+              (eligibleNotes.length === 0 && eligibleGoldNotes.length === 0) ||
               !snapshotName.trim()
             }
             onClick={() => void extendSnapshot()}>

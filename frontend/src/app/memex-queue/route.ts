@@ -10,8 +10,6 @@ const QUEUE =
   process.env.MEMEX_QUEUE_PATH ??
   '/data/projects/hedgedoc/memex/queue.jsonl'
 
-const MAX_PENDING_SOURCES = 4
-
 interface QueueItem {
   id: string
   alias: string
@@ -136,34 +134,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'alias or aliases required' }, { status: 400 })
   }
 
-  if (aliases.length > MAX_PENDING_SOURCES) {
-    return NextResponse.json(
-      {
-        error: `Add a maximum of ${MAX_PENDING_SOURCES} sources to Pending at a time`,
-        maximum: MAX_PENDING_SOURCES
-      },
-      { status: 400 }
-    )
-  }
-
+  // Pending has no artificial source-count cap. The unscoped Memex batch
+  // processor already handles pending items serially and retains its own
+  // processing-iteration guard.
   const pendingRows = rows.filter((row) => row.status === 'pending')
   const pendingAliases = new Set(pendingRows.map((row) => row.alias))
   const newAliases = aliases.filter((alias) => !pendingAliases.has(alias))
-  const availableSlots = Math.max(0, MAX_PENDING_SOURCES - pendingAliases.size)
-
-  if (newAliases.length > availableSlots) {
-    return NextResponse.json(
-      {
-        error:
-          `Memex Pending is limited to ${MAX_PENDING_SOURCES} sources. ` +
-          `${pendingAliases.size} already pending; ${availableSlots} slot(s) available.`,
-        maximum: MAX_PENDING_SOURCES,
-        pending: [...pendingAliases],
-        availableSlots
-      },
-      { status: 409 }
-    )
-  }
 
   const queuedAt = new Date().toISOString()
   const addedItems: QueueItem[] = newAliases.map((alias) => ({
@@ -193,8 +169,7 @@ export async function POST(request: NextRequest) {
       queued: addedItems.length,
       existing: aliases.length - addedItems.length,
       items,
-      item: aliases.length === 1 ? items[0] : undefined,
-      maximum: MAX_PENDING_SOURCES
+      item: aliases.length === 1 ? items[0] : undefined
     },
     { status: addedItems.length > 0 ? 201 : 200 }
   )

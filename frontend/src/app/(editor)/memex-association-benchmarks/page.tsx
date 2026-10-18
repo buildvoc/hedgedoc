@@ -42,6 +42,7 @@ export default function MemexAssociationBenchmarksPage({
           <Link href='/memex-association-review'>Association Review</Link>
           <Link href='/memex-settings'>Model Settings</Link>
           <Link href='/memex-snapshots'>Snapshots</Link>
+          <Link href='/memex-wiki-summary-quality-benchmarks'>Wiki Summary Quality</Link>
           <Link href='/memex-index'>Index</Link>
           <Link href='/memex-log'>Log</Link>
         </nav>

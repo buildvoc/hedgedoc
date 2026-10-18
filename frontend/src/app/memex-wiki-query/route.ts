@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { readMemexModelSettings } from '../memex-model-settings/_settings'
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +25,6 @@ const MAX_CHAT_TURNS = Math.max(
   Math.min(12, Number(process.env.MEMEX_WIKI_QUERY_MAX_CHAT_TURNS ?? '8')),
 )
 
-const ALIAS_PATTERN = /memex-wiki-[a-z0-9_-]{1,150}/g
 
 type OutputFormat =
   | 'markdown'
@@ -52,6 +53,11 @@ type WikiIndexEntry = {
   pageType: string
   title: string
   description: string
+}
+
+type WikiReferencePage = WikiIndexEntry & {
+  sourcePages?: number[]
+  sourceAnchor?: string
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -130,6 +136,82 @@ const jsonRequest = async (
   return body
 }
 
+const parseSourcePageList = (value: string): number[] => {
+  const pages: number[] = []
+
+  for (const part of value.split(',')) {
+    const range = part.trim().match(/^(\d{1,5})(?:\s*-\s*(\d{1,5}))?$/)
+    if (!range) continue
+
+    const start = Number(range[1])
+    const end = range[2] ? Number(range[2]) : start
+    if (start < 1 || end < start || end - start > 500) continue
+
+    for (let page = start; page <= end; page += 1) pages.push(page)
+  }
+
+  return pages
+}
+
+const extractSourcePages = (markdown: string): number[] => {
+  const pages: number[] = []
+  const frontmatter = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? ''
+  const frontmatterPages = frontmatter.match(
+    /^memex_source_pages:\s*\[([^\]]*)\]\s*$/m,
+  )?.[1]
+
+  if (frontmatterPages) pages.push(...parseSourcePageList(frontmatterPages))
+
+  for (const marker of markdown.matchAll(
+    /<!--\s*memex-source-pages:\s*([^>]+?)\s*-->/gi,
+  )) {
+    pages.push(...parseSourcePageList(marker[1]))
+  }
+
+  return [...new Set(pages)].sort((left, right) => left - right)
+}
+
+const extractSourceAnchor = (markdown: string): string | undefined => {
+  const frontmatter = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? ''
+  const value = frontmatter.match(/^memex_source_anchor:\s*(.+?)\s*$/m)?.[1]?.trim()
+  if (!value) return undefined
+
+  const anchor = value.replace(/^(?:\"([^\"]*)\"|'([^']*)')$/, '$1$2').trim()
+  return /^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$/.test(anchor)
+    ? anchor
+    : undefined
+}
+
+const loadReferencePages = async (
+  pages: WikiIndexEntry[],
+): Promise<WikiReferencePage[]> =>
+  Promise.all(
+    pages.map(async (page) => {
+      if (page.pageType !== 'source-summary') return page
+
+      try {
+        const detail = await jsonRequest(
+          `${WIKI_MAINTAIN_URL}?alias=${encodeURIComponent(page.alias)}`,
+        )
+        if (typeof detail.markdown !== 'string') return page
+
+        const sourcePages = extractSourcePages(detail.markdown)
+        const sourceAnchor = extractSourceAnchor(detail.markdown)
+        if (!sourcePages.length && !sourceAnchor) return page
+
+        return {
+          ...page,
+          ...(sourcePages.length ? { sourcePages } : {}),
+          ...(sourceAnchor ? { sourceAnchor } : {}),
+        }
+      } catch {
+        // Page provenance is optional UI metadata; never fail Wiki Chat because
+        // one reference cannot expose it.
+        return page
+      }
+    }),
+  )
+
 const readCatalogue = async (): Promise<WikiIndexEntry[]> => {
   const body = await jsonRequest(WIKI_MAINTAIN_URL)
   const pages = Array.isArray(body.pages) ? body.pages : []
@@ -205,6 +287,33 @@ const conversation = async (
     body: JSON.stringify(payload),
   })
 
+const conversationStream = async (
+  payload: Record<string, unknown>,
+): Promise<Response> => {
+  const response = await fetch(WIKI_CONVERSATION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      readOnly: true,
+      commit: false,
+      stream: true,
+    }),
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    const message =
+      isObject(body) && typeof body.error === 'string'
+        ? body.error
+        : `HTTP ${response.status} from ${WIKI_CONVERSATION_URL}`
+    throw new Error(message)
+  }
+  if (!response.body) throw new Error('Streaming Memex response has no body')
+  return response
+}
+
 const retryableReadOnlyError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error)
   return (
@@ -250,58 +359,19 @@ Do not append commentary before or after the JSON object.`
   }
 }
 
-const searchWiki = async (
+const searchWiki = (
   question: string,
   history: ChatTurn[],
   catalogue: WikiIndexEntry[],
-): Promise<{ aliases: string[]; retrieval: 'llm' | 'lexical' }> => {
-  const searchInstruction = `WIKI RAG RETRIEVAL ONLY.
-
-Use the CURRENT DERIVED WIKI CATALOGUE supplied to you as the retrieval index.
-Select the existing wiki pages that should be read in full to answer the user's
-latest question in the context of the recent chat.
-
-RECENT CHAT
-${formatHistory(history)}
-
-LATEST QUESTION
-${question}
-
-Rules:
-- This is retrieval only, not wiki maintenance.
-- Do NOT answer the question yet.
-- Return at most ${MAX_QUERY_PAGES} exact existing memex-wiki-* aliases.
-- Prefer topic/entity/synthesis/comparison pages, and include source-summary pages
-  when they contain important supporting evidence.
-- In your answer write exactly:
-ALIASES: alias1, alias2, alias3
-- If nothing is relevant write:
-ALIASES:
-`
-
-  try {
-    const result = await conversationReadOnly({
-      provenance: `wiki-query-rag-retrieval ${new Date().toISOString()}`,
-      targetAliases: [],
-      conversation: searchInstruction,
-    })
-
-    const answer = typeof result.answer === 'string' ? result.answer : ''
-    const known = new Set(catalogue.map((page) => page.alias))
-    const selected = [...new Set(answer.match(ALIAS_PATTERN) ?? [])]
-      .filter((alias) => known.has(alias))
-      .slice(0, MAX_QUERY_PAGES)
-
-    if (selected.length) return { aliases: selected, retrieval: 'llm' }
-  } catch {
-    // A retrieval-only model formatting failure must not break the whole chat.
-  }
-
-  return {
-    aliases: lexicalFallback(question, history, catalogue),
-    retrieval: 'lexical',
-  }
-}
+): { aliases: string[]; retrieval: 'lexical' } => ({
+  // Wiki Chat deliberately keeps retrieval off llama.cpp. With --parallel 1, an
+  // intermediate retrieval prompt would replace slot 0 immediately before the
+  // answer call and destroy the answer prompt's reusable live KV prefix.
+  aliases: lexicalFallback(question, history, catalogue).sort((left, right) =>
+    left.localeCompare(right),
+  ),
+  retrieval: 'lexical',
+})
 
 const formatInstruction = (format: OutputFormat): string => {
   switch (format) {
@@ -361,6 +431,98 @@ ${citationList}
     provenance: `wiki-query-rag-answer ${new Date().toISOString()}`,
     targetAliases: aliases,
     conversation: instruction,
+  })
+}
+
+const answerQueryStream = async (
+  question: string,
+  history: ChatTurn[],
+  format: OutputFormat,
+  aliases: string[],
+): Promise<Response> => {
+  const citationList = aliases.map((alias) => `- ${alias}`).join('\n')
+  const instruction = `WIKI RAG ANSWER MODE.
+
+You are answering a user in a chat interface using the maintained Memex wiki as
+retrieval-augmented context. Use ONLY the FULL CURRENT PAGES loaded for this
+request as factual wiki evidence. This call is server-enforced read-only.
+
+RECENT CHAT
+${formatHistory(history)}
+
+LATEST QUESTION
+${question}
+
+Required output:
+${formatInstruction(format)}
+
+Reference rules:
+- The UI shows the loaded wiki pages separately as references, so do not add
+  inline wiki citation links solely for attribution.
+- Never rely on a page that was not loaded.
+- Do not invent source aliases, facts, dates, relationships, or numbers.
+- State uncertainty when the loaded pages do not support a definite answer.
+- The loaded aliases available as evidence are:
+${citationList}
+`
+
+  return conversationStream({
+    provenance: `wiki-query-rag-answer ${new Date().toISOString()}`,
+    targetAliases: aliases,
+    conversation: instruction,
+  })
+}
+
+const streamQueryResponse = (
+  upstream: Response,
+  metadata: Record<string, unknown>,
+): Response => {
+  if (!upstream.body) throw new Error('Streaming Memex response has no body')
+
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
+  const source = upstream.body
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = source.getReader()
+      const send = (event: Record<string, unknown>): void => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
+      }
+
+      send({ type: 'meta', ...metadata })
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+
+          const delta = decoder.decode(value, { stream: true })
+          if (delta) send({ type: 'delta', delta })
+        }
+
+        const tail = decoder.decode()
+        if (tail) send({ type: 'delta', delta: tail })
+        send({ type: 'done' })
+        controller.close()
+      } catch (error) {
+        send({
+          type: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        })
+        controller.close()
+      } finally {
+        reader.releaseLock()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'X-Accel-Buffering': 'no',
+    },
   })
 }
 
@@ -537,16 +699,32 @@ export async function POST(request: NextRequest) {
       throw new Error('The maintained Memex wiki catalogue is empty')
     }
 
-    const retrievalResult = await searchWiki(question, history, catalogue)
+    const retrievalResult = searchWiki(question, history, catalogue)
     const aliases = retrievalResult.aliases
-    const result = await answerQuery(question, history, format, aliases)
 
     const byAlias = new Map(catalogue.map((page) => [page.alias, page]))
-    const pages = aliases.flatMap((alias) => {
-      const page = byAlias.get(alias)
-      return page ? [page] : []
-    })
+    const pages = await loadReferencePages(
+      aliases.flatMap((alias) => {
+        const page = byAlias.get(alias)
+        return page ? [page] : []
+      }),
+    )
 
+    const settings = await readMemexModelSettings()
+    if (settings.streamChatResponses) {
+      const upstream = await answerQueryStream(question, history, format, aliases)
+      return streamQueryResponse(upstream, {
+        format,
+        aliases,
+        pages,
+        readOnly: true,
+        model: settings.defaultModel,
+        provider: settings.provider,
+        retrieval: retrievalResult.retrieval,
+      })
+    }
+
+    const result = await answerQuery(question, history, format, aliases)
     const rawAnswer =
       typeof result.answer === 'string'
         ? result.answer
