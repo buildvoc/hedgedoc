@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { WikiAssociationResults } from './wiki-association-results'
 
 type Source = { alias: string; title: string; revisionId: string }
 type Reference = { alias: string; title: string; revisionId: string; sourceAlias: string; scope: string }
@@ -151,9 +152,10 @@ export function WikiGoldReview({ snapshotRevision }: { snapshotRevision: string 
     {result && <section style={card}>
       <h2>Run Benchmark</h2>
       <p>One direct model call using shared Memex settings and the frozen ORIGINAL HedgeDoc only. Gold facts are never included in the model prompt.</p>
-      <button type='button' disabled={!approved || runBusy} onClick={runBenchmark}>{runBusy ? 'Running…' : 'Run Benchmark — 1 call'}</button>
+      <button type='button' disabled={!approved || runBusy} onClick={runBenchmark}>{runBusy ? 'Generating summary…' : 'Run benchmark → Recall / Precision / F1'}</button>
       {!approved && <p>Save the human-approved Gold Set first.</p>}
-      {runResult && <><p>Run: {runResult.runId} · Model: {runResult.model} · awaiting human review</p><pre style={{whiteSpace:'pre-wrap',maxHeight:600,overflow:'auto'}}>{runResult.summary}</pre></>}
+      {runResult && <><p>Run: {runResult.runId} · Model: {runResult.model} · scoring automatically</p><pre style={{whiteSpace:'pre-wrap',maxHeight:600,overflow:'auto'}}>{runResult.summary}</pre></>}
     </section>}
+    {approved && <WikiAssociationResults snapshotRevision={snapshotRevision} latestRunId={runResult?.runId} />}
   </>
 }
