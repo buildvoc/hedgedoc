@@ -1576,6 +1576,8 @@ def normalize_wiki_mutations(
         }
 
         if page_type == "source-summary":
+            # Provenance for the exact model used by this queue processing run.
+            page["benchmarkGoldGeneratorModel"] = MODEL
             # Evidence-supported enrichment is strictly secondary to synthesis.
             # It is deterministic, bounded and may add zero citations safely.
             body, enriched_count = enrich_synthesized_memex_citations(
@@ -3443,7 +3445,8 @@ for d in docs:
 
     graph.append("")
 
-frontmatter = """---
+# Legacy trail-test frontmatter; unrelated to derived source-summary pages.
+frontmatter = f"""---
 okf_type: Index
 title: "Liphook Events — Free LLM Trail Test"
 description: "The configured Memex model maintains trails after reviewing queued HedgeDoc revisions."
