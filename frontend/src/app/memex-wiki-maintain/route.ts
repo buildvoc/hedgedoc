@@ -36,6 +36,7 @@ interface WikiPageMutation {
   sourceAliases?: unknown
   sourcePages?: unknown
   sourceAnchor?: unknown
+  benchmarkGoldGeneratorModel?: unknown
   body?: unknown
   expectedCurrentHash?: unknown
   expectMissing?: unknown
@@ -173,6 +174,17 @@ const normalizeSourceAnchor = (value: unknown, pageType: string): string => {
     throw new Error('sourceAnchor must be a HedgeDoc heading slug')
   }
   return anchor
+}
+
+const normalizeBenchmarkGoldGeneratorModel = (
+  value: unknown,
+  pageType: string,
+): string => {
+  if (value === undefined || value === '') return ''
+  if (pageType !== 'source-summary') {
+    throw new Error('benchmarkGoldGeneratorModel is supported only for source-summary pages')
+  }
+  return cleanText(value, 'benchmarkGoldGeneratorModel', 500)
 }
 
 const apiHeaders = (token: string): Record<string, string> => ({
@@ -318,6 +330,7 @@ const buildDerivedPage = (
   body: string,
   sourcePages: number[],
   sourceAnchor: string,
+  benchmarkGoldGeneratorModel: string,
   provenance: string,
   updatedAt: string,
 ): string => {
@@ -335,8 +348,12 @@ const buildDerivedPage = (
     pageType === 'source-summary' && sourceAnchor
       ? `\nmemex_source_anchor: ${yamlQuote(sourceAnchor)}`
       : ''
+  const benchmarkMetadata =
+    pageType === 'source-summary' && benchmarkGoldGeneratorModel
+      ? `\nmemex_benchmark_gold_generator_model: ${yamlQuote(benchmarkGoldGeneratorModel)}\nmemex_benchmark_role: "none"`
+      : ''
 
-  return `---\ntype: document\nokf_type: Concept\ntitle: ${yamlQuote(title)}\ndescription: ${yamlQuote(description)}\ntags:\n${tagLines}\nstatus: workarea\n${sourceBlock}\nmemex_page_type: ${yamlQuote(pageType)}\nmemex_updated_at: ${yamlQuote(updatedAt)}\nmemex_change_provenance: ${yamlQuote(provenance)}${sourcePageMetadata}${sourceAnchorMetadata}\n---\n\n${body.trim()}\n`
+  return `---\ntype: document\nokf_type: Concept\ntitle: ${yamlQuote(title)}\ndescription: ${yamlQuote(description)}\ntags:\n${tagLines}\nstatus: workarea\n${sourceBlock}\nmemex_page_type: ${yamlQuote(pageType)}\nmemex_updated_at: ${yamlQuote(updatedAt)}\nmemex_change_provenance: ${yamlQuote(provenance)}${sourcePageMetadata}${sourceAnchorMetadata}${benchmarkMetadata}\n---\n\n${body.trim()}\n`
 }
 
 const assertDerivedWikiPage = (markdown: string, alias: string): void => {
@@ -431,6 +448,10 @@ export async function POST(request: NextRequest) {
       const sourceAliases = normalizeSourceAliases(page.sourceAliases)
       const sourcePages = normalizeSourcePages(page.sourcePages, pageType)
       const sourceAnchor = normalizeSourceAnchor(page.sourceAnchor, pageType)
+      const benchmarkGoldGeneratorModel = normalizeBenchmarkGoldGeneratorModel(
+        page.benchmarkGoldGeneratorModel,
+        pageType,
+      )
       const normalizedBody = normalizeBody(page.body, title)
       const markdown = buildDerivedPage(
         pageType,
@@ -441,6 +462,7 @@ export async function POST(request: NextRequest) {
         normalizedBody,
         sourcePages,
         sourceAnchor,
+        benchmarkGoldGeneratorModel,
         provenance,
         requestTimestamp,
       )
