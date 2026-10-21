@@ -34,6 +34,7 @@ const LLAMACPP_MAX_TOKENS = Math.max(
     Number(process.env.MEMEX_WIKI_CONVERSATION_MAX_TOKENS ?? '8192'),
   ),
 )
+const READ_ONLY_CHAT_MAX_PROMPT_CHARS = 80_000
 const PAGE_TYPES = new Set([
   'source-summary',
   'entity',
@@ -441,9 +442,12 @@ const llmChat = async (
   systemPrompt: string | null = null,
 ): Promise<Record<string, unknown>> => {
   const promptChars = prompt.length + (systemPrompt?.length ?? 0)
-  if (promptChars > settings.maxPromptChars) {
+  const promptLimit = allowPlainAnswer
+    ? READ_ONLY_CHAT_MAX_PROMPT_CHARS
+    : settings.maxPromptChars
+  if (promptChars > promptLimit) {
     throw new Error(
-      `Conversation maintenance prompt exceeds maxPromptChars (${promptChars} > ${settings.maxPromptChars})`,
+      `Conversation prompt exceeds its character budget (${promptChars} > ${promptLimit})`,
     )
   }
 
@@ -630,9 +634,9 @@ const llmChatStream = async (
   systemPrompt: string | null = null,
 ): Promise<Response> => {
   const promptChars = prompt.length + (systemPrompt?.length ?? 0)
-  if (promptChars > settings.maxPromptChars) {
+  if (promptChars > READ_ONLY_CHAT_MAX_PROMPT_CHARS) {
     throw new Error(
-      `Conversation maintenance prompt exceeds maxPromptChars (${promptChars} > ${settings.maxPromptChars})`,
+      `Read-only Wiki Chat prompt exceeds its character budget (${promptChars} > ${READ_ONLY_CHAT_MAX_PROMPT_CHARS})`,
     )
   }
 
@@ -770,14 +774,16 @@ const buildReadOnlyPromptParts = (
   loadedPages: LoadedWikiPage[],
   streamAnswer: boolean,
 ): { systemPrompt: string; userPrompt: string } => {
-  const catalogueText = catalogue.length
-    ? catalogue
-        .map(
-          (page) =>
-            `- [${page.pageType}] ${page.title} | alias=${page.alias} | ${page.description}`,
-        )
-        .join('\n')
-    : '(empty)'
+  // The complete catalogue is available to lexical retrieval, but the LLM
+  // sees navigation metadata ONLY for the pages actually loaded as evidence.
+  const loadedAliases = new Set(loadedPages.map((page) => page.alias))
+  const catalogueText = catalogue
+    .filter((page) => loadedAliases.has(page.alias))
+    .map(
+      (page) =>
+        `- [${page.pageType}] ${page.title} | alias=${page.alias} | ${page.description}`,
+    )
+    .join('\n') || '(empty)'
   const pageText = loadedPages.length
     ? loadedPages
         .map(
