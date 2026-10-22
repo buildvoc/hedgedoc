@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "runId": "11db7163-7e8c-45b4-ba64-194f8252b3cf",
+  "snapshotRevision": "01a14e9c-4009-7038-8a02-dbd146cdbb17",
+  "model": "/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf",
+  "evaluatedAt": "2026-10-20T09:44:25.528Z",
+  "rows": [
+    {
+      "id": "14-format",
+      "prediction": "missing",
+      "confidence": 100,
+      "reason": "The provided summary statement is only a title/header and does not contain the information regarding the report format or the requirement for it to be factual and establish low risk.",
+      "evidence": "",
+      "outcome": "False negative"
+    },
+    {
+      "id": "14-1",
+      "prediction": "missing",
+      "confidence": 100,
+      "reason": "The summary statement provides a high-level overview of Clause 14's scope but does not include the specific requirement mentioned in the gold fact regarding the report's purpose to inform the FRA in the context of the Fire Safety Order.",
+      "evidence": "",
+      "outcome": "False negative"
+    },
+    {
+      "id": "14-2",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary explicitly states in section 14.2 that reports must clearly state they are not intended to confirm compliance with building regulations, whether at the time of construction or currently.",
+      "evidence": "",
+      "outcome": "True positive"
+    },
+    {
+      "id": "14-3",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary accurately captures the requirement in Clause 14.3 regarding the inclusion of a statement of competence for low-risk determinations.",
+      "evidence": "When a building or its external walls are determined to be inherently low risk via the process in Clause 4 (Figure 1), the report must include a statement confirming the competence of the report's signatories regarding the specific building commissioned.",
+      "outcome": "True positive"
+    },
+    {
+      "id": "14-4a",
+      "prediction": "missing",
+      "confidence": 100,
+      "reason": "The summary focuses on Clause 14.1 and does not mention the requirement to identify the appraiser's name and organization, which is found in Clause 14.4.",
+      "evidence": "",
+      "outcome": "False negative"
+    },
+    {
+      "id": "14-4b",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary explicitly includes the requirement for the report to include the date of completion and inspection dates under section 14.4.",
+      "evidence": "The date of report completion and the date(s) of any inspections.",
+      "outcome": "True positive"
+    },
+    {
+      "id": "14-4c",
+      "prediction": "missing",
+      "confidence": 100,
+      "reason": "The summary does not mention the requirement to include the building address.",
+      "evidence": "",
+      "outcome": "False negative"
+    },
+    {
+      "id": "14-4d",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary explicitly lists 'The building's use or uses' as a minimum requirement under Clause 14.4.",
+      "evidence": "",
+      "outcome": "True positive"
+    },
+    {
+      "id": "14-4e",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary explicitly includes 'The building's dimensional metrics' as a minimum requirement.",
+      "evidence": "The building's dimensional metrics.",
+      "outcome": "True positive"
+    },
+    {
+      "id": "14-4f",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary explicitly includes the requirement for the building's age (approximate age is acceptable).",
+      "evidence": "",
+      "outcome": "True positive"
+    },
+    {
+      "id": "14-4g",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "Clause 14.4 (g) explicitly requires an explanation of how a 'low' risk outcome was arrived at.",
+      "evidence": "",
+      "outcome": "True positive",
+      "evidenceValidation": "non-verbatim-quote-omitted"
+    },
+    {
+      "id": "14-4h",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary explicitly mentions that the report should include information to assist dutyholders in complying with relevant statutory duties.",
+      "evidence": "",
+      "outcome": "True positive"
+    },
+    {
+      "id": "normative",
+      "prediction": "supported",
+      "confidence": 100,
+      "reason": "The summary maintains the distinction between requirements and the scope of the report, and separates the purpose of the report from building regulation compliance.",
+      "evidence": "",
+      "outcome": "True positive",
+      "evidenceValidation": "non-verbatim-quote-omitted"
+    }
+  ],
+  "claimDecisions": [
+    {
+      "claim": "PAS 9980: 2026 – Clause 14: Scope and Format of Reports Not Containing an FRAEW**",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The statement accurately reflects the title and section number found in the original document."
+    },
+    {
+      "claim": "Clause 14 outlines the requirements for reports prepared under PAS 9980 that do not include a Fire Risk Appraisal of External Walls (FRAEW).",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The statement accurately reflects the title and the content of Clause 14 as described in the original document."
+    },
+    {
+      "claim": "These reports do not require a prescribed format or pro forma.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The original text states that reports prepared in accordance with this PAS need not follow a prescribed format and do not contain a pro forma."
+    },
+    {
+      "claim": "Such reports are expected to be factual, detailing the building's nature or external wall construction and confirming that the risk is inherently low (per Clause 4), thereby negating the need for an FRAEW.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The original text states that reports are expected to be factual, setting out the nature of the building or external wall construction, and confirming low risk per Clause 4."
+    },
+    {
+      "claim": "Key Provisions and Requirements**",
+      "supported": true,
+      "confidence": 95,
+      "reason": "While the exact string is not in the original, the original text contains a series of clauses (14.1, 14.2, 14.3, 14.4) that constitute the provisions and requirements described by this heading."
+    },
+    {
+      "claim": "**Purpose and Context (14.1):** Reports must explicitly state they are intended to inform the building's Fire Risk Assessment (FRA) and should be interpreted within the context of relevant ongoing legislation (e.g., the Fire Safety Order in England and Wales).",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The summary accurately reflects the requirements of Clause 14.1 and the accompanying note regarding the Fire Safety Order in England and Wales."
+    },
+    {
+      "claim": "**Compliance Disclaimer (14.2):** Reports must clearly state they are not intended to confirm compliance with building regulations, whether at the time of construction or currently.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "This statement is a direct reflection of clause 14.2 in the original text."
+    },
+    {
+      "claim": "However, they may reference historical standards and guidance (e.g., ADB) as reference points.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "This statement accurately summarizes the note provided in the original text regarding historical standards."
+    },
+    {
+      "claim": "**Low-Risk Determinations (14.3):** When a building or its external walls are determined to be inherently low risk via the process in Clause 4 (Figure 1), the report must include a statement confirming the competence of the report's signatories regarding the specific building commissioned.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The statement accurately reflects the content of Clause 14.3 in the original document."
+    },
+    {
+      "claim": "**Minimum Report Contents (14.4):** At a minimum, the report must include:",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Matches the introductory text of clause 14.4 in the original document."
+    },
+    {
+      "claim": "The name of the appraiser and their organization.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Matches item (a) in the list under clause 14.4."
+    },
+    {
+      "claim": "The date of report completion and the date(s) of any inspections.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "This is a direct excerpt from clause 14.4 (b) of the original text."
+    },
+    {
+      "claim": "The address of the building.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.4 (c) in the original text requires the address of the building to be included."
+    },
+    {
+      "claim": "The building's use or uses.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "This is directly stated in Clause 14.4 (d)."
+    },
+    {
+      "claim": "The building's dimensional metrics.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "This is directly stated in Clause 14.4 (e)."
+    },
+    {
+      "claim": "The age of the building (approximate age is acceptable).",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The original text (clause 14.4 f) states 'the age of the building (this may be approximate);'."
+    },
+    {
+      "claim": "An explanation of how a \"low\" risk outcome was determined (referencing Clause 4).",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Directly matches clause 14.4 (g) in the original text."
+    },
+    {
+      "claim": "Information to assist dutyholders in complying with relevant statutory duties (e.g., Fire Safety (England) Regulations 2022), which may be provided in summary form.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Directly matches clause 14.4 (h) and the subsequent note in the original text."
+    }
+  ],
+  "decisionMetrics": {
+    "precision": 1,
+    "recall": 0.6923076923076923,
+    "f1": 0.8181818181818181,
+    "truePositives": 9,
+    "falsePositives": 0,
+    "falseNegatives": 4,
+    "goldFactCount": 13,
+    "supportedClaims": 18,
+    "verifiedClaims": 18,
+    "scoringMethod": "model-decision"
+  },
+  "goldCoverage": {
+    "supported": 9,
+    "missing": 4,
+    "partial": 0,
+    "incorrect": 0,
+    "total": 13,
+    "strictRecall": 0.6923076923076923
+  },
+  "status": "model-assessed-unverified"
+}

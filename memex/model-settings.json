@@ -1,0 +1,13 @@
+{
+  "provider": "llamacpp",
+  "baseUrl": "http://192.168.1.99:8080/v1",
+  "defaultModel": "/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf",
+  "numCtx": 65536,
+  "maxPromptChars": 80000,
+  "streamChatResponses": true,
+  "llamacppCachePrompt": true,
+  "timeoutSeconds": 600,
+  "temperature": 0.35,
+  "ollamaFlashAttention": true,
+  "ollamaKvCacheType": "q8_0"
+}

@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "runId": "23867d5e-44fe-406e-bd24-4092faba69b8",
+  "chunks": [
+    "**PAS 9980: 2026, Clause 14: Scope and Format of Reports Not Containing an FRAEW** Clause 14 outlines the requirements for reports that do not include a Fire Risk Appraisal of External Walls (FRAEW). These reports do not require a prescribed format or pro forma but should be factual in nature, describing the building or its external wall construction and confirming that the risk is inherently low according to Clause 4, thus negating the need for an FRAEW. **Key Provisions and Requirements:**",
+    "* **Purpose and Legislation:** Reports must clearly state they are intended to inform the building's Fire Risk Assessment (FRA) within the context of relevant legislative controls. In England and Wales, this refers to the Fire Safety Order. * **Compliance Disclaimer:** Reports must explicitly state they are not intended to confirm compliance with building regulations, whether at the time of construction or currently. However, they may reference historical standards and guidance (e.g., ADB) as a reference point.",
+    "* **Competence Statement:** Where a building or its external walls are determined to be inherently low risk using the process in Figure 1 (per Clause 4), the report must include a statement regarding the competence of the report's signatories for that specific building. **Minimum Report Contents (Clause 14.4):** At a minimum, the report must include: * The name of the appraiser and their organization. * The date of report completion and the date(s) of any inspections. * The address and the use(s) of the building.",
+    "* The dimensional metrics and the age of the building (approximate age is acceptable). * An explanation of how a \"low\" risk outcome was reached (referencing Clause 4). * Information to assist dutyholders in complying with relevant statutory duties (this may be provided in summary form, such as in accordance with the Fire Safety (England) Regulations 2022)."
+  ],
+  "chunkIndex": 4,
+  "claims": [
+    "Clause 14 outlines requirements for reports that do not include a Fire Risk Appraisal of External Walls (FRAEW).",
+    "Reports without an FRAEW do not require a prescribed format or pro forma.",
+    "Reports without an FRAEW should be factual in nature.",
+    "Reports without an FRAEW should describe the building or its external wall construction.",
+    "Reports without an FRAEW should confirm that the risk is inherently low according to Clause 4.",
+    "Confirming the risk is inherently low according to Clause 4 negates the need for an FRAEW.",
+    "Reports must state they are intended to inform the building's Fire Risk Assessment (FRA) within the context of relevant legislative controls.",
+    "In England and Wales, relevant legislative controls refer to the Fire Safety Order.",
+    "Reports must state they are not intended to confirm compliance with building regulations at the time of construction.",
+    "Reports must state they are not intended to confirm compliance with current building regulations.",
+    "Reports may reference historical standards and guidance such as ADB.",
+    "Reports for buildings or external walls determined to be inherently low risk via the Figure 1 process must include a competence statement for the signatories.",
+    "The report must include the name of the appraiser.",
+    "The report must include the appraiser's organization.",
+    "The report must include the date of report completion.",
+    "The report must include the date(s) of any inspections.",
+    "The report must include the address of the building.",
+    "The report must include the use(s) of the building.",
+    "The document includes dimensional metrics.",
+    "The document includes the age of the building.",
+    "Approximate age is acceptable.",
+    "An explanation of how a low risk outcome was reached is provided.",
+    "The explanation references Clause 4.",
+    "Information is provided to assist dutyholders in complying with statutory duties.",
+    "Information may be provided in summary form.",
+    "Information may be provided in accordance with the Fire Safety (England) Regulations 2022."
+  ],
+  "decisions": [
+    {
+      "claim": "Clause 14 outlines requirements for reports that do not include a Fire Risk Appraisal of External Walls (FRAEW).",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The title of section 14 is '14 Scope and format of reports that do not contain an FRAEW', and the subsections (14.1 to 14.4) explicitly detail the requirements and contents for these specific types of reports."
+    },
+    {
+      "claim": "Reports without an FRAEW do not require a prescribed format or pro forma.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The text explicitly states, 'Reports prepared in accordance with this PAS need not follow a prescribed format, and this PAS does not contain a pro forma for a report' under the section 'Scope and format of reports that do not contain an FRAEW'."
+    },
+    {
+      "claim": "Reports without an FRAEW should be factual in nature.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The text explicitly states: 'Reports that do not contain an FRAEW are expected to be largely factual in nature...'"
+    },
+    {
+      "claim": "Reports without an FRAEW should describe the building or its external wall construction.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The text explicitly states that reports not containing an FRAEW are expected to be factual in nature, 'setting out the nature of a building or its external wall construction'."
+    },
+    {
+      "claim": "Reports without an FRAEW should confirm that the risk is inherently low according to Clause 4.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The text explicitly states that reports not containing an FRAEW are expected to confirm that the building or its external wall construction accords with situations in the Commentary on Clause 4 where the risk is inherently low."
+    },
+    {
+      "claim": "Confirming the risk is inherently low according to Clause 4 negates the need for an FRAEW.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The text explicitly states that confirming a building's situation accords with Clause 4 (where risk is inherently low) 'thus negating the need for an FRAEW'."
+    },
+    {
+      "claim": "Reports must state they are intended to inform the building's Fire Risk Assessment (FRA) within the context of relevant legislative controls.",
+      "supported": true,
+      "confidence": 95,
+      "reason": "The claim is a direct paraphrase of clause 14.1 in the text, which states that the report 'should make clear that it is intended to inform the building's FRA' and that findings should be interpreted 'in the context of the ongoing legislative control... under the relevant legislation.'"
+    },
+    {
+      "claim": "In England and Wales, relevant legislative controls refer to the Fire Safety Order.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The document explicitly states: 'NOTE In England and Wales, the relevant legislation is the Fire Safety Order [3].'"
+    },
+    {
+      "claim": "Reports must state they are not intended to confirm compliance with building regulations at the time of construction.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.2 of the document explicitly states that 'The report should clearly state that it is not aimed at confirming compliance with building regulations, either at the time of construction or currently.'"
+    },
+    {
+      "claim": "Reports must state they are not intended to confirm compliance with current building regulations.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.2 of the document explicitly states: 'The report should clearly state that it is not aimed at confirming compliance with building regulations, either at the time of construction or currently.'"
+    },
+    {
+      "claim": "Reports may reference historical standards and guidance such as ADB.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The text explicitly states: 'NOTE The report might identify relevant standards and guidance that supported the building regulations at the time when the building was constructed (e.g. ADB), as a reference point.'"
+    },
+    {
+      "claim": "Reports for buildings or external walls determined to be inherently low risk via the Figure 1 process must include a competence statement for the signatories.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.3 of the document explicitly states that if a building or its external walls are determined to be inherently low risk using the process shown in Figure 1, the report should include a statement of the competence of the report's signatories."
+    },
+    {
+      "claim": "The report must include the name of the appraiser.",
+      "supported": true,
+      "confidence": 95,
+      "reason": "Clause 14.4 of the document explicitly states that the report should set out, as a minimum, 'the name of the appraiser and the organization they work for'."
+    },
+    {
+      "claim": "The report must include the appraiser's organization.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.4 (a) explicitly states that the report should set out, as a minimum, 'the name of the appraiser and the organization they work for'."
+    },
+    {
+      "claim": "The report must include the date of report completion.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.4(b) of the document explicitly states that the report should set out, as a minimum, 'the date the report was completed'."
+    },
+    {
+      "claim": "The report must include the date(s) of any inspections.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.4(b) of the document explicitly states that the report should set out, as a minimum, 'the date the report was completed and the date(s) of any inspection(s);'."
+    },
+    {
+      "claim": "The report must include the address of the building.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "Clause 14.4 c) explicitly states that the report should set out, as a minimum, the address of the building being appraised."
+    },
+    {
+      "claim": "The report must include the use(s) of the building.",
+      "supported": true,
+      "confidence": 95,
+      "reason": "Clause 14.4, item d, explicitly states that the report should set out, as a minimum, the use or uses of the building."
+    },
+    {
+      "claim": "The document includes dimensional metrics.",
+      "supported": false,
+      "confidence": 100,
+      "reason": "The document specifies that reports should include the dimensional metrics of a building as a minimum requirement, but the document itself does not contain any actual dimensional metrics."
+    },
+    {
+      "claim": "The document includes the age of the building.",
+      "supported": false,
+      "confidence": 95,
+      "reason": "The document is a standard (PAS 9980: 2026) that specifies the requirements for a report. While it states that a report *should* include the age of the building, the document itself does not contain the age of any specific building."
+    },
+    {
+      "claim": "Approximate age is acceptable.",
+      "supported": true,
+      "confidence": 100,
+      "reason": "The text explicitly states in clause 14.4 (f) that the age of the building in the report 'may be approximate'."
+    }
+  ]
+}

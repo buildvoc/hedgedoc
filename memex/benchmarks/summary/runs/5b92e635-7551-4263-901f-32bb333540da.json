@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runId": "5b92e635-7551-4263-901f-32bb333540da",
+  "createdAt": "2026-10-18T13:54:20.464Z",
+  "snapshotRevision": "01a14e9c-4009-7038-8a02-dbd146cdbb17",
+  "source": {
+    "alias": "docling-batch-843bb6ff56ef6c80e8ab0ea0",
+    "title": "64_PAS_9980_FINAL",
+    "revisionId": "01a138fd-37e9-7620-b177-dfe5c9461508"
+  },
+  "goldReferenceRevision": "01a14e86-5682-70c8-a22a-c9b29f7d32da",
+  "goldFactCount": 13,
+  "model": "/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf",
+  "provider": "llamacpp",
+  "summary": "**PAS 9980: 2026 – Clause 14: Scope and Format of Reports Not Containing an FRAEW**\n\n**Overview**\nClause 14 outlines the requirements for reports prepared under PAS 9980 that do not require a Fire Risk Appraisal of External Walls (FRAEW). These reports do not follow a prescribed format or pro forma and are expected to be largely factual, describing the building or its external wall construction and confirming that the risk is inherently low in accordance with Clause 4, thus negating the need for an FRAEW.\n\n**Core Requirements and Disclaimers**\n*   **Purpose and Context:** Reports must clearly state they are intended to inform the building's Fire Risk Assessment (FRA) and should be interpreted within the context of relevant ongoing legislation (e.g., the Fire Safety Order in England and Wales).\n*   **Regulatory Disclaimer:** Reports must explicitly state that they are not intended to confirm compliance with building regulations, whether at the time of construction or currently. However, they may reference relevant historical standards or guidance (e.g., ADB) as reference points.\n*   **Signatory Competence:** Where a building or its external walls are determined to be inherently low risk using the process in Figure 1 (per Clause 4), the report must include a statement confirming the competence of the signatories to make that determination for the commissioned building.\n\n**Minimum Report Contents**\nAt a minimum, reports must include the following:\n*   The name of the appraiser and their organization.\n*   The date of report completion and the date(s) of any inspections.\n*   The address and the use(s) of the building.\n*   The dimensional metrics and the approximate age of the building.\n*   An explanation of how a \"low\" risk outcome was reached (referencing Clause 4).\n*   Information to assist dutyholders in complying with relevant statutory duties (e.g., Fire Safety (England) Regulations 2022); this information may be provided in summary form.",
+  "finishReason": "stop",
+  "status": "awaiting-human-review"
+}

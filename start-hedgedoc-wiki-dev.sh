@@ -4,7 +4,7 @@ set -Eeuo pipefail
 cd "$(dirname "$0")"
 
 source "$HOME/.nvm/nvm.sh"
-nvm use 22 >/dev/null
+nvm use 20 >/dev/null
 
 # Prevent stale shell variables overriding .env
 for var in $(env | awk -F= '/^HD_/ {print $1}'); do

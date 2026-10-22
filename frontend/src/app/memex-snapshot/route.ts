@@ -9,7 +9,8 @@ const MEMEX_INDEX_PATH = '/data/projects/hedgedoc/memex/index.md'
 const HEDGEDOC_NOTES_API = 'http://127.0.0.1:3100/api/v2/notes'
 const MEMEX_SNAPSHOTS_ALIAS = 'memex-snapshots'
 const GOLD_PREFIX = 'memex-gold-summary-'
-const GOLD_ALIAS_PATTERN = /^memex-gold-summary-[a-z0-9][a-z0-9_-]*$/i
+const NOTE_ALIAS_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/i
+const GOLD_ALIAS_PATTERN = NOTE_ALIAS_PATTERN
 
 interface IndexedSource {
   alias: string
@@ -352,13 +353,17 @@ export async function GET(request: Request) {
     const goldReferenceAlias = url.searchParams.get('goldReferenceAlias')?.trim() ?? ''
 
     if (indexedOnly) {
-      const indexText = await readFile(MEMEX_INDEX_PATH, 'utf8')
-      const indexedSources = extractIndexedSources(indexText)
+      // Index discovery is informational. An unindexed HedgeDoc may still be
+      // frozen directly by an explicit Extend Snapshot selection.
+      const indexedSources = await readFile(MEMEX_INDEX_PATH, 'utf8')
+        .then(extractIndexedSources)
+        .catch((): IndexedSource[] => [])
+      const visibleSources = indexedSources
         .filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX))
         .sort((left, right) => left.title.localeCompare(right.title))
 
       return NextResponse.json(
-        { sources: indexedSources },
+        { sources: visibleSources },
         {
           headers: {
             'Cache-Control': 'no-store',
@@ -376,8 +381,10 @@ export async function GET(request: Request) {
 
     assertRevisionId(baseRevision)
 
-    const [indexText, token] = await Promise.all([
-      readFile(MEMEX_INDEX_PATH, 'utf8'),
+    const [indexedSources, token] = await Promise.all([
+      readFile(MEMEX_INDEX_PATH, 'utf8')
+        .then(extractIndexedSources)
+        .catch((): IndexedSource[] => []),
       readMemexApiToken(),
     ])
 
@@ -386,23 +393,20 @@ export async function GET(request: Request) {
       baseRevision,
       token,
     )
-    const indexedSources = extractIndexedSources(indexText)
+    const visibleIndexedSources = indexedSources
       .filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX))
     const manifest = parseSnapshotManifest(baseContent)
     const baseSources = manifest.sources as SnapshotSource[]
     const baseAliases = new Set(baseSources.map((source) => source.alias.trim()))
-    const candidates = indexedSources
+    const candidates = visibleIndexedSources
       .filter((source) => !baseAliases.has(source.alias.trim()))
       .sort((left, right) => left.title.localeCompare(right.title))
     const goldReferences = manifest.goldReferences ?? []
     const goldReferencePreview = goldReferenceAlias
       ? await fetchGoldReference(goldReferenceAlias, token)
       : undefined
-    if (goldReferencePreview &&
-        !baseAliases.has(goldReferencePreview.sourceAlias) &&
-        !indexedSources.some((source) => source.alias === goldReferencePreview.sourceAlias)) {
-      throw new Error(`Gold note ${goldReferenceAlias} links to ${goldReferencePreview.sourceAlias}, which is neither in the snapshot nor in the indexed source set`)
-    }
+    // A Gold note can link to an original selected from My Notes even when
+    // that original is not indexed. The POST validates the final source list.
 
     return NextResponse.json(
       {
@@ -493,7 +497,7 @@ export async function POST(request: Request) {
 
     if (goldReferenceAliases.length > 100 || goldReferenceAliases.some((alias) => !GOLD_ALIAS_PATTERN.test(alias))) {
       return NextResponse.json(
-        { error: 'At most 100 valid memex-gold-summary- aliases can be selected' },
+        { error: 'At most 100 valid HedgeDoc Gold reference aliases can be selected' },
         { status: 400 },
       )
     }
@@ -505,9 +509,9 @@ export async function POST(request: Request) {
       )
     }
 
-    if (sourceAliases.length > 100) {
+    if (sourceAliases.length > 100 || sourceAliases.some((alias) => !NOTE_ALIAS_PATTERN.test(alias))) {
       return NextResponse.json(
-        { error: 'A snapshot extension can add at most 100 HedgeDocs at once' },
+        { error: 'A snapshot extension can add at most 100 HedgeDocs with valid aliases at once' },
         { status: 400 },
       )
     }
@@ -519,8 +523,13 @@ export async function POST(request: Request) {
     const token = await readMemexApiToken()
     const indexedSources = creatingEmptySnapshot
       ? []
-      : extractIndexedSources(await readFile(MEMEX_INDEX_PATH, 'utf8'))
-        .filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX))
+      : extendingSnapshot
+        ? await readFile(MEMEX_INDEX_PATH, 'utf8')
+          .then(extractIndexedSources)
+          .catch((): IndexedSource[] => [])
+          .then((sources) => sources.filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX)))
+        : extractIndexedSources(await readFile(MEMEX_INDEX_PATH, 'utf8'))
+          .filter((source) => !source.alias.toLowerCase().startsWith(GOLD_PREFIX))
     let sources: SnapshotSource[] = []
     let buildMetadata: SnapshotBuildMetadata = {}
 
@@ -560,23 +569,24 @@ export async function POST(request: Request) {
       const indexedByAlias = new Map(
         indexedSources.map((source) => [source.alias.trim(), source]),
       )
-      const missingAliases = sourceAliases.filter((alias) => !indexedByAlias.has(alias))
-      if (missingAliases.length > 0) {
-        return NextResponse.json(
-          {
-            error: `Selected HedgeDoc${missingAliases.length === 1 ? ' is' : 's are'} not in the current indexed Memex source set: ${missingAliases.join(', ')}`,
-          },
-          { status: 400 },
-        )
-      }
-
+      // Freeze latest revision of EVERY explicitly selected HedgeDoc, including
+      // notes absent from memex/index.md. Never add them to the queue or index.
       const newSources = await Promise.all(
         sourceAliases.map(async (alias) => {
-          const source = indexedByAlias.get(alias) as IndexedSource
-          return {
-            ...source,
-            revisionId: await fetchLatestRevisionId(source.alias, token),
+          const revisionId = await fetchLatestRevisionId(alias, token)
+          const markdown = await fetchRevisionContent(alias, revisionId, token)
+          const role = goldYamlValue(markdown, 'memex_benchmark_role').toLowerCase()
+          const pageType = goldYamlValue(markdown, 'memex_page_type').toLowerCase()
+          const tags = goldYamlValue(markdown, 'tags').toLowerCase()
+          const title = goldYamlValue(markdown, 'title') || indexedByAlias.get(alias)?.title || alias
+          if (role === 'gold-reference' || /\bmemex-gold-summary\b/.test(tags) ||
+              /^gold reference summary\b/i.test(title)) {
+            throw new Error(`Selected note ${alias} is a Gold reference, not an original source. Select its original source and attach this note as a Gold reference.`)
           }
+          if (pageType === 'source-summary') {
+            throw new Error(`Selected note ${alias} is a generated source-summary, not an original. Select the original HedgeDoc instead.`)
+          }
+          return { alias, title, revisionId }
         }),
       )
 
@@ -594,7 +604,7 @@ export async function POST(request: Request) {
       for (const reference of newGoldReferences) {
         if (!sources.some((source) => source.alias === reference.sourceAlias)) {
           return NextResponse.json(
-            { error: `Gold note ${reference.alias} links to ${reference.sourceAlias}; add that original indexed source to this snapshot first (or in this same extension)` },
+            { error: `Gold note ${reference.alias} links to ${reference.sourceAlias}; select that original source on My Notes and add it to this snapshot first (or in the same extension). Indexing is not required.` },
             { status: 400 },
           )
         }

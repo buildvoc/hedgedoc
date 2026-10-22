@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "snapshotRevision": "01a14e9c-4009-7038-8a02-dbd146cdbb17",
+  "source": {
+    "alias": "docling-batch-843bb6ff56ef6c80e8ab0ea0",
+    "title": "64_PAS_9980_FINAL",
+    "revisionId": "01a138fd-37e9-7620-b177-dfe5c9461508"
+  },
+  "reference": {
+    "alias": "memex-gold-summary-pas9980-clause14-page48",
+    "title": "Gold Reference Summary — PAS 9980:2026 Clause 14 (page 48)",
+    "revisionId": "01a14e86-5682-70c8-a22a-c9b29f7d32da",
+    "sourceAlias": "docling-batch-843bb6ff56ef6c80e8ab0ea0",
+    "scope": "PAS 9980:2026 Clause 14, printed page 48 only"
+  },
+  "facts": [
+    {
+      "id": "14-format",
+      "expectation": "No prescribed report format or pro-forma; the report should be factual and establish inherently low risk."
+    },
+    {
+      "id": "14-1",
+      "expectation": "The report should clarify that it informs the building fire risk assessment (FRA) in the Fire Safety Order context."
+    },
+    {
+      "id": "14-2",
+      "expectation": "The report should not claim compliance with building regulations, either currently or when constructed."
+    },
+    {
+      "id": "14-3",
+      "expectation": "Where the building or all relevant external walls are determined inherently low risk under Clause 4 by following the Figure 1 process, the report should include a statement of the signatories' competence to make that determination."
+    },
+    {
+      "id": "14-4a",
+      "expectation": "The report should identify the appraiser's name and organisation."
+    },
+    {
+      "id": "14-4b",
+      "expectation": "The report should give its completion date and the building inspection date(s)."
+    },
+    {
+      "id": "14-4c",
+      "expectation": "The report should give the building address."
+    },
+    {
+      "id": "14-4d",
+      "expectation": "The report should identify the building use or uses."
+    },
+    {
+      "id": "14-4e",
+      "expectation": "The report should give the building dimensions."
+    },
+    {
+      "id": "14-4f",
+      "expectation": "The report should state the building's approximate age."
+    },
+    {
+      "id": "14-4g",
+      "expectation": "The report should explain how inherently low risk was established."
+    },
+    {
+      "id": "14-4h",
+      "expectation": "The report should provide information to assist dutyholders with applicable statutory obligations."
+    },
+    {
+      "id": "normative",
+      "expectation": "Preserve the distinction between SHOULD and MUST, conditional scope, and the separation between fire-risk information and building-regulation compliance."
+    }
+  ],
+  "reviewer": "human-ui",
+  "reviewedAt": "2026-10-18T10:45:01.893Z"
+}

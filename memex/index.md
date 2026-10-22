@@ -89,6 +89,10 @@ Content-oriented index maintained after successful Memex processing.
 - [UK's rarest bird of prey rears new chicks in secret location - BBC News](http://192.168.1.142:8180/n/mq7jh7958kmd58yat2m1bk0nc0) — BBC News report on the successful nesting of the rare Montagu's harrier in a secret UK location and RSPB conservation efforts.
 - [Epic Comedy at Liphook - 12th September | Epic Comedy](http://192.168.1.142:8180/n/63ckcszwf95sb885s2rb9dg4m8) — A comedy performance event scheduled for September 12th in Liphook.
 - [Inside_Watts_Chapel_ a_little_known_Arts_and_Crafts_delight_THE_WORLD_OF_INTERIORS](http://192.168.1.142:8180/n/docling-inside-watts-chapel-a-little-known-arts-and-crafts-delight-the-world-of-interiors) — An exploration of the Arts and Crafts artistry and symbolic decorations within the Watts Chapel in Surrey.
+- [Writage - Supported Syntax](http://192.168.1.142:8180/n/68qxwpftdcr9xrbcyxedz7kdcg) — Technical documentation for Writage, detailing its support for CommonMark and extended Markdown syntax including tables, footnotes, and YAML frontmatter.
+- [Writage - Citations](http://192.168.1.142:8180/n/h7n5sd3ph1q3qe1ty4rhk51a5g) — Technical documentation detailing Pandoc-style citation syntax and bibliography file support for the Writage software.
+- [MD71-HB0_datasheet_v1.0](http://192.168.1.142:8180/n/jr81de4jf35vfha02s4tt3czpw) — Technical datasheet for the GIGABLYTE MD71-HB0 Intel Xeon E-ATX Server Motherboard, specifying 2nd Gen Xeon Scalable support and DDR4 memory configuration.
+- [MU71-SU0_datasheet_v1.0](http://192.168.1.142:8180/n/r56jdb0qq2st59zwse3ftp12b8) — Technical datasheet for the GIGABLYTE MU71-SU0 Intel Xeon ATX Server Motherboard, detailing 2nd Gen Xeon Scalable support and DDR4 memory configuration.
 
 ## Trails
 
@@ -276,3 +280,10 @@ Records of professional presentations and industry meetups.
 
 - [July meetup Professor Stephen Robertson will talk about his new book](http://192.168.1.142:8180/n/ZyqC12TjO)
 - [ISKO UK Meetup - The Evolution of UX Strategy by Jaime Levy](http://192.168.1.142:8180/n/ljY3sNdb5)
+
+### Server Hardware and Specifications
+
+Both documents provide detailed technical specifications for enterprise-grade server motherboards, focusing on CPU compatibility, memory architecture, and expansion capabilities.
+
+- [MU71-SU0_datasheet_v1.0](http://192.168.1.142:8180/n/r56jdb0qq2st59zwse3ftp12b8)
+- [HP Linux Tools — Fan Setup and Use](http://192.168.1.142:8180/n/6sq95vhnw1gxpfefcafwes8rhc)

@@ -1,0 +1,256 @@
+{
+  "version": 2,
+  "runId": "b8db0382-2f75-495d-94f6-3ca4dd0cf430",
+  "statements": [
+    "The document titled \"64_PAS_9980_FINAL\" is a draft concept document related to PAS 9980: 2026.",
+    "It outlines the scope and format of reports that do not contain a Fire Risk Appraisal of External Walls (FRAEW).",
+    "Key points include:",
+    "**Flexibility in Format**: Reports prepared under this PAS do not need to follow a prescribed format and do not include a pro forma.",
+    "**Nature of Reports**: These reports are expected to be factual, detailing the building's construction and confirming that it aligns with low-risk situations outlined in Clause 4, thereby negating the need for an FRAEW.",
+    "**Purpose of Reports**: The report should clarify its intention to inform the building's Fire Risk Assessment (FRA) under relevant legislation, such as the Fire Safety Order in England and Wales.",
+    "It should not confirm compliance with building regulations.",
+    "**Content Requirements**:",
+    "The report should include the name of the appraiser and their organization.",
+    "The completion date of the report and any inspection dates.",
+    "The address and use of the building.",
+    "Dimensional metrics and age of the building.",
+    "An explanation of how a 'low' risk outcome was determined.",
+    "Information to assist dutyholders in complying with statutory duties.",
+    "**Competence Statement**: If the building is deemed low-risk, the report should include a statement of competence from the signatories.",
+    "**Relevant Standards**: The report may reference standards and guidance that supported building regulations at the time of construction.",
+    "**Legal Context**: Notes mention specific regulations like the Fire Safety (England) Regulations 2022.",
+    "The document is copyrighted by The British Standards Institution, with all rights reserved for the year 2026."
+  ],
+  "rows": [
+    {
+      "gold": {
+        "id": "14-format",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The summary accurately reflects the key points about the format and content of the reports as described in the original document.",
+        "evidence": "",
+        "outcome": "True positive"
+      },
+      "claims": [
+        {
+          "claim": "The document titled \"64_PAS_9980_FINAL\" is a draft concept document related to PAS 9980: 2026.",
+          "supported": true,
+          "confidence": 100,
+          "reason": "This statement directly matches the metadata and title of the original document."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-1",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly states that the report should make clear its intention to inform the building's Fire Risk Assessment (FRA) under relevant legislation, such as the Fire Safety Order in England and Wales.",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "It outlines the scope and format of reports that do not contain a Fire Risk Appraisal of External Walls (FRAEW).",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text discusses the scope and format of reports that do not contain an FRAEW, confirming this point."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-2",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly states that the report should clearly state it is not aimed at confirming compliance with building regulations.",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "Key points include:",
+          "supported": true,
+          "confidence": 90,
+          "reason": "The original document outlines key points in a structured manner."
+        },
+        {
+          "claim": "**Flexibility in Format**: Reports prepared under this PAS do not need to follow a prescribed format and do not include a pro forma.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text explicitly states that reports need not follow a prescribed format and do not contain a pro forma."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-3",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The summary accurately reflects the content of the original document regarding the competence statement required in low-risk situations.",
+        "evidence": "",
+        "outcome": "True positive"
+      },
+      "claims": [
+        {
+          "claim": "**Nature of Reports**: These reports are expected to be factual, detailing the building's construction and confirming that it aligns with low-risk situations outlined in Clause 4, thereby negating the need for an FRAEW.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original document explicitly states that reports should confirm alignment with low-risk situations in Clause 4."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-4a",
+        "prediction": "missing",
+        "confidence": 95,
+        "reason": "The summary does not mention the appraiser's name or organization.",
+        "evidence": "",
+        "outcome": "False negative"
+      },
+      "claims": [
+        {
+          "claim": "**Purpose of Reports**: The report should clarify its intention to inform the building's Fire Risk Assessment (FRA) under relevant legislation, such as the Fire Safety Order in England and Wales.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text explicitly states this purpose."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-4b",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly states that the report should include 'the date the report was completed and the date(s) of any inspection(s).'",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "It should not confirm compliance with building regulations.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text states: '14.2 The report should clearly state that it is not aimed at confirming compliance with building regulations, either at the time of construction or currently.'"
+        },
+        {
+          "claim": "**Content Requirements**:",
+          "supported": false,
+          "confidence": 0,
+          "reason": "The original text does not contain this exact phrase."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-4c",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly states that the report should include 'the address of the building being appraised.'",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "The report should include the name of the appraiser and their organization.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text explicitly states that the report should include 'the name of the appraiser and the organization they work for.'"
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-4d",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly states that the report should include 'the use or uses of the building'.",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "The completion date of the report and any inspection dates.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text explicitly states that the report should include 'the date the report was completed and the date(s) of any inspection(s)'."
+        },
+        {
+          "claim": "The address and use of the building.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text explicitly states that the report should include 'the address of the building being appraised' and 'the use or uses of the building'."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-4e",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly states that the report should include 'the dimensional metrics of the building' and 'the age of the building'.",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "Dimensional metrics and age of the building.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text explicitly states that the report should include 'the dimensional metrics of the building' and 'the age of the building'."
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-4f",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly mentions that the report should include 'the age of the building (this may be approximate)'",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "An explanation of how a 'low' risk outcome was determined.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text states: \"g)  an explanation as to how a 'low' risk outcome has been arrived at (see Clause 4 ); and\""
+        }
+      ]
+    },
+    {
+      "gold": {
+        "id": "14-4g",
+        "prediction": "supported",
+        "confidence": 95,
+        "reason": "The original text explicitly states that the report should include 'an explanation as to how a 'low' risk outcome has been arrived at'.",
+        "evidence": "",
+        "outcome": "True positive",
+        "evidenceValidation": "non-verbatim-quote-omitted"
+      },
+      "claims": [
+        {
+          "claim": "Information to assist dutyholders in complying with statutory duties.",
+          "supported": true,
+          "confidence": 90,
+          "reason": "The original text includes 'information that might assist dutyholders in complying with relevant statutory duties.'"
+        },
+        {
+          "claim": "**Competence Statement**: If the building is deemed low-risk, the report should include a statement of competence from the signatories.",
+          "supported": true,
+          "confidence": 95,
+          "reason": "The original text states 'the report should include a statement of the competence of the report's signatories to do so for the building for which the report has been commissioned.'"
+        }
+      ]
+    }
+  ]
+}

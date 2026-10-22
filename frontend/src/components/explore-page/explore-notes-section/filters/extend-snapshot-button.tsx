@@ -7,6 +7,7 @@ import { Alert, Button, Dropdown, Form, Modal, Spinner } from 'react-bootstrap'
 interface SelectedSnapshotNote {
   alias: string
   title: string
+  tags?: string[]
 }
 
 interface SnapshotExtendCandidate {
@@ -18,6 +19,7 @@ interface SnapshotExtendOptions {
   baseRevision: string
   baseName: string
   baseSourceCount: number
+  baseSourceAliases: string[]
   candidates: SnapshotExtendCandidate[]
   goldReferences?: { alias: string }[]
 }
@@ -90,25 +92,35 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
   const [error, setError] = useState('')
 
   const selectedGoldNotes = useMemo(
-    () => selectedNotes.filter((note) => note.alias.startsWith('memex-gold-summary-')),
+    () => selectedNotes.filter((note) =>
+      note.alias.toLowerCase().startsWith('memex-gold-summary-') ||
+      (note.tags ?? []).some((tag) => tag.toLowerCase() === 'memex-gold-summary')
+    ),
     [selectedNotes]
   )
 
+  // A frozen snapshot may include original HedgeDocs which have not been put
+  // into the Memex index or queue. Gold notes are explicitly excluded.
+  const originalSelectedNotes = useMemo(() => {
+    const goldAliases = new Set(selectedGoldNotes.map((note) => note.alias))
+    return selectedNotes.filter((note) => !goldAliases.has(note.alias))
+  }, [selectedNotes, selectedGoldNotes])
+
   const indexedSelectedNotes = useMemo(
-    () => selectedNotes.filter((note) => !note.alias.startsWith('memex-gold-summary-') && indexedAliases.has(note.alias)),
-    [indexedAliases, selectedNotes]
+    () => originalSelectedNotes.filter((note) => indexedAliases.has(note.alias)),
+    [indexedAliases, originalSelectedNotes]
   )
 
   const nonIndexedSelectedNotes = useMemo(
-    () => selectedNotes.filter((note) => !note.alias.startsWith('memex-gold-summary-') && !indexedAliases.has(note.alias)),
-    [indexedAliases, selectedNotes]
+    () => originalSelectedNotes.filter((note) => !indexedAliases.has(note.alias)),
+    [indexedAliases, originalSelectedNotes]
   )
 
   const eligibleNotes = useMemo(() => {
     if (!options) return []
-    const candidateAliases = new Set(options.candidates.map((candidate) => candidate.alias))
-    return indexedSelectedNotes.filter((note) => candidateAliases.has(note.alias))
-  }, [indexedSelectedNotes, options])
+    const existing = new Set(options.baseSourceAliases ?? [])
+    return originalSelectedNotes.filter((note) => !existing.has(note.alias))
+  }, [originalSelectedNotes, options])
 
   const eligibleGoldNotes = useMemo(() => {
     if (!options) return []
@@ -119,8 +131,8 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
   const alreadyInBaseNotes = useMemo(() => {
     if (!options) return []
     const eligibleAliases = new Set(eligibleNotes.map((note) => note.alias))
-    return indexedSelectedNotes.filter((note) => !eligibleAliases.has(note.alias))
-  }, [eligibleNotes, indexedSelectedNotes, options])
+    return originalSelectedNotes.filter((note) => !eligibleAliases.has(note.alias))
+  }, [eligibleNotes, originalSelectedNotes, options])
 
   const open = useCallback(async () => {
     setShow(true)
@@ -160,8 +172,8 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
     try {
       const loaded = await loadSnapshotOptions(revisionId)
       setOptions(loaded)
-      const candidateAliases = new Set(loaded.candidates.map((candidate) => candidate.alias))
-      const eligibleCount = indexedSelectedNotes.filter((note) => candidateAliases.has(note.alias)).length
+      const existingAliases = new Set(loaded.baseSourceAliases ?? [])
+      const eligibleCount = originalSelectedNotes.filter((note) => !existingAliases.has(note.alias)).length
       const existingGoldAliases = new Set((loaded.goldReferences ?? []).map((ref) => ref.alias))
       const goldCount = selectedGoldNotes.filter((note) => !existingGoldAliases.has(note.alias)).length
       setSnapshotName(
@@ -175,7 +187,7 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
     } finally {
       setLoadingRevision(false)
     }
-  }, [indexedSelectedNotes, selectedGoldNotes])
+  }, [originalSelectedNotes, selectedGoldNotes])
 
   const extendSnapshot = useCallback(async () => {
     if (!baseRevision || !options || (eligibleNotes.length === 0 && eligibleGoldNotes.length === 0) || !snapshotName.trim()) return
@@ -247,24 +259,28 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
           <p>
             Create a new snapshot from an existing frozen revision plus the HedgeDocs
             selected on <strong>My Notes</strong>. Original sources must be indexed.
-            Selected <code>memex-gold-summary-</code> notes are attached separately as
+            Gold notes marked with the <code>memex-gold-summary</code> tag or
+            <code>memex-gold-summary-</code> alias are attached separately as
             frozen benchmark references and never passed to the summary model or Memex queue.
+            Unindexed original notes can be frozen without adding them to the index.
             Existing source revisions remain unchanged.
           </p>
 
           <Alert variant='secondary'>
             Selected notes: <strong>{selectedNotes.length}</strong>
             <br />
-            Current indexed Memex sources selected: <strong>{indexedSelectedNotes.length}</strong>
+            Original sources selected (indexed): <strong>{indexedSelectedNotes.length}</strong>
             <br />
-            Gold reference notes selected: <strong>{selectedGoldNotes.length}</strong>
+            Original sources selected (not indexed): <strong>{nonIndexedSelectedNotes.length}</strong>
+            <br />
+            Gold reference notes selected (by tag or alias): <strong>{selectedGoldNotes.length}</strong>
           </Alert>
 
           {nonIndexedSelectedNotes.length > 0 && (
-            <Alert variant='warning'>
-              {nonIndexedSelectedNotes.length} selected note{nonIndexedSelectedNotes.length === 1 ? '' : 's'}
-              {' '}filtered out because {nonIndexedSelectedNotes.length === 1 ? 'it is' : 'they are'} not in the
-              current indexed Memex source set.
+            <Alert variant='info'>
+              {nonIndexedSelectedNotes.length} non-indexed original source{nonIndexedSelectedNotes.length === 1 ? '' : 's'}
+              {' '}can be added by freezing their current HedgeDoc revisions.
+              They will not be added to the Memex index or queue.
             </Alert>
           )}
 
@@ -295,7 +311,7 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
               <Alert variant={eligibleNotes.length + eligibleGoldNotes.length > 0 ? 'info' : 'warning'}>
                 Base: <strong>{options.baseName}</strong> ({options.baseSourceCount} frozen sources)
                 <br />
-                Eligible original sources: <strong>{eligibleNotes.length}</strong>
+                Eligible original sources (indexed or not): <strong>{eligibleNotes.length}</strong>
                 <br />
                 Eligible Gold references: <strong>{eligibleGoldNotes.length}</strong>
                 <br />
@@ -333,7 +349,7 @@ export const ExtendSnapshotButton: React.FC<Props> = ({
 
               {eligibleNotes.length > 0 && (
                 <div className='small mb-3'>
-                  <strong>Will add:</strong>
+                  <strong>Will freeze as original sources:</strong>
                   <ul className='mb-0 mt-1'>
                     {eligibleNotes.map((note) => (
                       <li key={note.alias}>{note.title || note.alias}</li>

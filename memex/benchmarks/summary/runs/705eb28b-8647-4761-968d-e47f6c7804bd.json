@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runId": "705eb28b-8647-4761-968d-e47f6c7804bd",
+  "createdAt": "2026-10-20T14:39:09.704Z",
+  "snapshotRevision": "01a14e9c-4009-7038-8a02-dbd146cdbb17",
+  "source": {
+    "alias": "docling-batch-843bb6ff56ef6c80e8ab0ea0",
+    "title": "64_PAS_9980_FINAL",
+    "revisionId": "01a138fd-37e9-7620-b177-dfe5c9461508"
+  },
+  "goldReferenceRevision": "01a14e86-5682-70c8-a22a-c9b29f7d32da",
+  "goldFactCount": 13,
+  "model": "mistral-small3.1:24b-instruct-2503-q4_K_M",
+  "provider": "ollama",
+  "summary": "The document titled \"64_PAS_9980_FINAL\" is a draft concept document related to PAS 9980: 2026. It discusses the scope and format of reports that do not contain a Fire Risk Appraisal of External Walls (FRAEW). Key points include:\n\n1. **Format Flexibility**: Reports prepared under this PAS need not follow a prescribed format and do not include a pro forma.\n\n2. **Nature of Reports**: These reports are expected to be factual, describing the building or its external wall construction and confirming that the risk is inherently low, negating the need for an FRAEW.\n\n3. **Purpose of the Report**:\n   - The report should clarify that it informs the building's Fire Risk Assessment (FRA).\n   - It should state that it does not confirm compliance with building regulations.\n   - It may reference relevant standards and guidance from the time of construction.\n\n4. **Competence Statement**: If the building or its external walls are determined to be low risk, the report should include a statement of the signatories' competence to make this determination.\n\n5. **Minimum Report Content**:\n   - Name of the appraiser and their organization.\n   - Completion date and inspection dates.\n   - Address of the building being appraised.\n   - Use or uses of the building.\n   - Dimensional metrics of the building.\n   - Age of the building (approximate if necessary).\n   - Explanation of how a 'low' risk outcome was determined.\n   - Information to assist dutyholders in complying with statutory duties.\n\n6. **Legal Context**: In England and Wales, the relevant legislation is the Fire Safety Order. The report might provide information in summary form according to applicable jurisdiction-specific regulations (e.g., Fire Safety (England) Regulations 2022).\n\n7. **Copyright**: The document is © The British Standards Institution 2026 - ALL RIGHTS RESERVED.\n\nThe document structure includes various text elements, lists, and metadata related to the PDF origin and page layout.",
+  "finishReason": "stop",
+  "status": "awaiting-human-review"
+}

@@ -25,7 +25,7 @@ export interface NotesListProps {
   memexQueueOnly?: boolean
   tagFilter?: string[]
   snapshotSelectedAliases?: Set<string>
-  onSnapshotSelectionChange?: (alias: string, title: string, selected: boolean) => void
+  onSnapshotSelectionChange?: (alias: string, title: string, selected: boolean, tags: string[]) => void
 }
 
 /**
@@ -147,7 +147,7 @@ export const NotesList: React.FC<NotesListProps> = ({
   )
 
   const handleSnapshotSelectionChange = useCallback(
-    (alias: string, title: string, selected: boolean, shiftKey: boolean) => {
+    (alias: string, title: string, tags: string[], selected: boolean, shiftKey: boolean) => {
       if (!onSnapshotSelectionChange) {
         return
       }
@@ -162,7 +162,7 @@ export const NotesList: React.FC<NotesListProps> = ({
           const end = Math.max(anchorIndex, currentIndex)
 
           for (const note of selectableEntries.slice(start, end + 1)) {
-            onSnapshotSelectionChange(note.primaryAlias, note.title, selected)
+            onSnapshotSelectionChange(note.primaryAlias, note.title, selected, note.tags)
           }
 
           selectionAnchorAlias.current = alias
@@ -170,7 +170,7 @@ export const NotesList: React.FC<NotesListProps> = ({
         }
       }
 
-      onSnapshotSelectionChange(alias, title, selected)
+      onSnapshotSelectionChange(alias, title, selected, tags)
       selectionAnchorAlias.current = alias
     },
     [onSnapshotSelectionChange, selectableEntries],
@@ -203,6 +203,7 @@ export const NotesList: React.FC<NotesListProps> = ({
                     handleSnapshotSelectionChange(
                       note.primaryAlias,
                       note.title,
+                      note.tags,
                       selected,
                       shiftKey,
                     )

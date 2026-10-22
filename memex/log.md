@@ -2519,3 +2519,127 @@
 - nodeBook: `memex-network`
 - summary: The Memex has been updated with a detailed exploration of the interior artistry and symbolism within Watts Chapel, highlighting the connection between Mary Watts's historical craftsmanship and contemporary sculpture.
 
+## [2026-10-20T13:28:54+00:00] lint | Memex orphan invariant
+
+- status: PASS
+- active sources: 1
+- indexed sources: 86
+- graph sources: 86
+- connected sources: 86
+- orphan pages: 0
+- errors: 0
+- warnings: 0
+- LLM called: no
+
+## [2026-10-20T13:28:56+00:00] ingest | 68qxwpftdcr9xrbcyxedz7kdcg
+
+- revision: `01a15978-9eab-7418-8b95-8ef32eafe6a5`
+- cached index sources: 85
+- full HedgeDocs read: 1
+- documents represented: 86
+- trails: 18
+- LLM associated_with suggestions: 0
+- derived wiki pages updated: 1
+- derived wiki catalogue pages seen: 342
+- full derived wiki pages supplied to LLM: 6
+- index read by LLM: yes
+- recent log entries supplied to LLM: 12
+- LLM called: yes
+- main model: `/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf`
+- association verifier: disabled; human review authoritative
+- nodeBook: `memex-network`
+- summary: The new source provides technical documentation for Writage, detailing its support for CommonMark and extended Markdown syntax (tables, footnotes, strikethrough, and YAML frontmatter). This adds a new dimension to the 'Software Tools and Utilities' trail, specifically regarding document conversion and Markdown processing.
+
+## [2026-10-20T13:36:40+00:00] lint | Memex orphan invariant
+
+- status: PASS
+- active sources: 2
+- indexed sources: 87
+- graph sources: 87
+- connected sources: 87
+- orphan pages: 0
+- errors: 0
+- warnings: 0
+- LLM called: no
+
+## [2026-10-20T13:36:42+00:00] ingest | h7n5sd3ph1q3qe1ty4rhk51a5g
+
+- revision: `01a15983-3d32-70c8-8ac0-a4862294d630`
+- cached index sources: 86
+- full HedgeDocs read: 1
+- documents represented: 87
+- trails: 18
+- LLM associated_with suggestions: 0
+- derived wiki pages updated: 1
+- derived wiki catalogue pages seen: 343
+- full derived wiki pages supplied to LLM: 6
+- index read by LLM: yes
+- recent log entries supplied to LLM: 12
+- LLM called: yes
+- main model: `gemma4:26b`
+- association verifier: disabled; human review authoritative
+- nodeBook: `memex-network`
+- summary: Added technical documentation for Writage's citation and bibliography management capabilities.
+
+## [2026-10-21T08:06:16+00:00] lint | Memex orphan invariant
+
+- status: PASS
+- active sources: 3
+- indexed sources: 88
+- graph sources: 88
+- connected sources: 88
+- orphan pages: 0
+- errors: 0
+- warnings: 0
+- LLM called: no
+
+## [2026-10-21T08:06:18+00:00] ingest | jr81de4jf35vfha02s4tt3czpw
+
+- revision: `01a15d7c-99b0-762e-b49a-7113c92b05cb`
+- cached index sources: 87
+- full HedgeDocs read: 1
+- documents represented: 88
+- trails: 19
+- LLM associated_with suggestions: 1
+- derived wiki pages updated: 1
+- derived wiki catalogue pages seen: 344
+- full derived wiki pages supplied to LLM: 6
+- index read by LLM: yes
+- recent log entries supplied to LLM: 12
+- LLM called: yes
+- main model: `/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf`
+- association verifier: disabled; human review authoritative
+- nodeBook: `memex-network`
+- summary: The new source provides a technical datasheet for a GIGABYTE Intel Xeon E-ATX Server Motherboard (MD71-HB0), detailing its hardware specifications, including CPU support, memory configuration, and expansion slots.
+
+## [2026-10-21T08:07:50+00:00] lint | Memex orphan invariant
+
+- status: PASS
+- active sources: 4
+- indexed sources: 89
+- graph sources: 89
+- connected sources: 89
+- orphan pages: 0
+- errors: 0
+- warnings: 0
+- LLM called: no
+
+## [2026-10-21T08:07:52+00:00] ingest | r56jdb0qq2st59zwse3ftp12b8
+
+- revision: `01a15d79-13fa-7078-b9be-daec883b154d`
+- cached index sources: 88
+- full HedgeDocs read: 1
+- documents represented: 89
+- trails: 19
+- LLM associated_with suggestions: 1
+- derived wiki pages updated: 1
+- derived wiki catalogue pages seen: 345
+- full derived wiki pages supplied to LLM: 6
+- index read by LLM: yes
+- recent log entries supplied to LLM: 12
+- LLM called: yes
+- main model: `/data/projects/llama.cpp/models/gemma4-26b-standalone.gguf`
+- association verifier: disabled; human review authoritative
+- nodeBook: `memex-network`
+- summary: The new source provides a technical datasheet for the GIGABYTE MU71-SU0 Intel Xeon ATX Server Motherboard. This document shares hardware-specific technical details (CPU support, memory architecture, and expansion slots) with the existing MD71-HB0 datasheet, allowing for the expansion of the 'Server Hardware and Specifications' trail.
+

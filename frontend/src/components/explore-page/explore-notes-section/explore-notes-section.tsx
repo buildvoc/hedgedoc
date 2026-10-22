@@ -38,7 +38,9 @@ export const ExploreNotesSection: React.FC<ExploreNotesSectionProps> = ({ mode }
   const [filterByType, setFilterByType] = useUrlParamState<NoteType | null>('type', null)
   const [memexFilter, setMemexFilter] = useUrlParamState<string | null>('memex', null)
   const previousMode = useRef<Mode>(mode)
-  const [snapshotSelectedNotes, setSnapshotSelectedNotes] = useState<Map<string, string>>(new Map())
+  const [snapshotSelectedNotes, setSnapshotSelectedNotes] = useState<
+    Map<string, { title: string; tags: string[] }>
+  >(new Map())
 
   const tagFilter = useMemo(
     () =>
@@ -57,15 +59,15 @@ export const ExploreNotesSection: React.FC<ExploreNotesSectionProps> = ({ mode }
   )
 
   const selectedSnapshotNotes = useMemo(
-    () => [...snapshotSelectedNotes.entries()].map(([alias, title]) => ({ alias, title })),
+    () => [...snapshotSelectedNotes.entries()].map(([alias, note]) => ({ alias, ...note })),
     [snapshotSelectedNotes]
   )
 
-  const setSnapshotNoteSelected = useCallback((alias: string, title: string, selected: boolean) => {
+  const setSnapshotNoteSelected = useCallback((alias: string, title: string, selected: boolean, tags: string[]) => {
     setSnapshotSelectedNotes((current) => {
       const next = new Map(current)
       if (selected) {
-        next.set(alias, title)
+        next.set(alias, { title, tags })
       } else {
         next.delete(alias)
       }

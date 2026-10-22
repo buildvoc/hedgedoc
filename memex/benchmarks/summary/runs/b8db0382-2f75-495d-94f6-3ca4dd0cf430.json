@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runId": "b8db0382-2f75-495d-94f6-3ca4dd0cf430",
+  "createdAt": "2026-10-20T14:49:34.467Z",
+  "snapshotRevision": "01a14e9c-4009-7038-8a02-dbd146cdbb17",
+  "source": {
+    "alias": "docling-batch-843bb6ff56ef6c80e8ab0ea0",
+    "title": "64_PAS_9980_FINAL",
+    "revisionId": "01a138fd-37e9-7620-b177-dfe5c9461508"
+  },
+  "goldReferenceRevision": "01a14e86-5682-70c8-a22a-c9b29f7d32da",
+  "goldFactCount": 13,
+  "model": "mistral-small3.1:24b-instruct-2503-q4_K_M",
+  "provider": "ollama",
+  "summary": "The document titled \"64_PAS_9980_FINAL\" is a draft concept document related to PAS 9980: 2026. It outlines the scope and format of reports that do not contain a Fire Risk Appraisal of External Walls (FRAEW). Key points include:\n\n- **Flexibility in Format**: Reports prepared under this PAS do not need to follow a prescribed format and do not include a pro forma.\n- **Nature of Reports**: These reports are expected to be factual, detailing the building's construction and confirming that it aligns with low-risk situations outlined in Clause 4, thereby negating the need for an FRAEW.\n- **Purpose of Reports**: The report should clarify its intention to inform the building's Fire Risk Assessment (FRA) under relevant legislation, such as the Fire Safety Order in England and Wales. It should not confirm compliance with building regulations.\n- **Content Requirements**:\n  - The report should include the name of the appraiser and their organization.\n  - The completion date of the report and any inspection dates.\n  - The address and use of the building.\n  - Dimensional metrics and age of the building.\n  - An explanation of how a 'low' risk outcome was determined.\n  - Information to assist dutyholders in complying with statutory duties.\n\n- **Competence Statement**: If the building is deemed low-risk, the report should include a statement of competence from the signatories.\n- **Relevant Standards**: The report may reference standards and guidance that supported building regulations at the time of construction.\n- **Legal Context**: Notes mention specific regulations like the Fire Safety (England) Regulations 2022.\n\nThe document is copyrighted by The British Standards Institution, with all rights reserved for the year 2026.",
+  "finishReason": "stop",
+  "status": "awaiting-human-review"
+}

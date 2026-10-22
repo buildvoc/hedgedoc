@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Pin the stack to the Node version used by the installed native modules.
-NODE_BIN=/home/hp/.nvm/versions/node/v22.23.2/bin
+NODE_BIN=/home/hp/.nvm/versions/node/v20.20.0/bin
 if [[ ! -x "$NODE_BIN/node" ]]; then
     echo "ERROR: Node 22.23.2 not found at $NODE_BIN"
     exit 1

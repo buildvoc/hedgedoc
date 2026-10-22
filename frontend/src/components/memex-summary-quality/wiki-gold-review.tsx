@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { WikiAssociationResults } from './wiki-association-results'
 
 type Source = { alias: string; title: string; revisionId: string }
 type Reference = { alias: string; title: string; revisionId: string; sourceAlias: string; scope: string }
 type Fact = { id: string; expectation: string }
 type Approved = { facts: Fact[]; reviewer: string; reviewedAt: string }
+type SummaryNote = { alias: string; revisionId: string; title: string; generatorModel: string }
 type GoldReply = { source: Source; reference: Reference; original: string; gold: string; approvedGoldSet: Approved | null; error?: string }
 const API = '/memex-wiki-summary-quality-benchmarks/gold'
 
@@ -44,11 +46,15 @@ export function WikiGoldReview({ snapshotRevision }: { snapshotRevision: string 
   const [saved, setSaved] = useState(false)
   const [runBusy, setRunBusy] = useState(false)
   const [runResult, setRunResult] = useState<{ runId: string; summary: string; model: string } | null>(null)
+  const [summaryMode, setSummaryMode] = useState<'generate' | 'existing'>('generate')
+  const [summaryAlias, setSummaryAlias] = useState('')
+  const [summaryPreview, setSummaryPreview] = useState<SummaryNote | null>(null)
+  const [checkingSummary, setCheckingSummary] = useState(false)
 
   useEffect(() => {
     if (!snapshotRevision) return
     let current = true
-    setBusy(true); setError(''); setResult(null)
+    setBusy(true); setError(''); setResult(null); setRunResult(null); setSummaryPreview(null)
     fetch(`${API}?snapshotRevision=${encodeURIComponent(snapshotRevision)}`, { cache: 'no-store' })
       .then(async response => {
         const data = await response.json() as GoldReply
@@ -100,13 +106,33 @@ export function WikiGoldReview({ snapshotRevision }: { snapshotRevision: string 
     finally { setBusy(false) }
   }
 
+  async function checkSummary() {
+    if (!result || !summaryAlias.trim()) return
+    setCheckingSummary(true); setError(''); setSummaryPreview(null)
+    try {
+      const query = new URLSearchParams({ snapshotRevision, summaryAlias: summaryAlias.trim() })
+      const response = await fetch(`/memex-wiki-summary-quality-benchmarks/run?${query}`, { cache: 'no-store' })
+      const data = await response.json() as { sourceSummary?: SummaryNote; error?: string }
+      if (!response.ok || !data.sourceSummary) throw new Error(data.error || 'Source-summary validation failed')
+      setSummaryPreview(data.sourceSummary)
+    } catch (reason) { setError(String(reason)) } finally { setCheckingSummary(false) }
+  }
+
   async function runBenchmark() {
-    if (!approved || runBusy) return
+    if (!approved || runBusy || (summaryMode === 'existing' && !summaryAlias.trim())) return
     setRunBusy(true); setError('')
     try {
-      const response = await fetch('/memex-wiki-summary-quality-benchmarks/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotRevision }) })
+      const response = await fetch('/memex-wiki-summary-quality-benchmarks/run', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snapshotRevision, ...(summaryMode === 'existing' ? { summaryAlias: summaryAlias.trim() } : {}) }) })
       const data = await response.json() as { error?: string; runId?: string; summary?: string; model?: string }
       if (!response.ok || !data.runId || !data.summary || !data.model) throw new Error(data.error || `Run HTTP ${response.status}`)
+      const judged = await fetch('/memex-wiki-summary-quality-benchmarks/judge', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({runId:data.runId}) })
+      const scored = await judged.json() as { error?: string; result?: { decisionMetrics?: { precision:number; recall:number; f1:number } } }
+      if (!judged.ok || !scored.result?.decisionMetrics) {
+        setRunResult({ runId: data.runId, summary: data.summary, model: data.model })
+        throw new Error(scored.error || 'Model decision scoring incomplete; retry from Run Ledger')
+      }
+      // Refresh the ledger only AFTER scoring; never race a second judge request.
       setRunResult({ runId: data.runId, summary: data.summary, model: data.model })
     } catch (reason) { setError(String(reason)) } finally { setRunBusy(false) }
   }
@@ -150,10 +176,21 @@ export function WikiGoldReview({ snapshotRevision }: { snapshotRevision: string 
     </section>}
     {result && <section style={card}>
       <h2>Run Benchmark</h2>
-      <p>One direct model call using shared Memex settings and the frozen ORIGINAL HedgeDoc only. Gold facts are never included in the model prompt.</p>
-      <button type='button' disabled={!approved || runBusy} onClick={runBenchmark}>{runBusy ? 'Running…' : 'Run Benchmark — 1 call'}</button>
+      <p>Generate a new summary from the frozen original, or evaluate an existing source-summary HedgeDoc. Gold facts never enter summary generation.</p>
+      <div style={{ display: 'flex', gap: 18, marginBottom: 12 }}>
+        <label><input type='radio' checked={summaryMode === 'generate'} onChange={() => { setSummaryMode('generate'); setSummaryPreview(null) }} /> Generate new summary</label>
+        <label><input type='radio' checked={summaryMode === 'existing'} onChange={() => setSummaryMode('existing')} /> Existing source-summary</label>
+      </div>
+      {summaryMode === 'existing' && <div style={{ marginBottom: 12 }}>
+        <label htmlFor='benchmark-summary-alias'>Source-summary HedgeDoc alias or /n/ URL</label>
+        <input id='benchmark-summary-alias' style={field} value={summaryAlias} onChange={e => { setSummaryAlias(e.target.value); setSummaryPreview(null) }} placeholder='Paste existing HedgeDoc note alias or URL' />
+        <button type='button' disabled={checkingSummary || !approved || !summaryAlias.trim() || runBusy} onClick={() => void checkSummary()}>{checkingSummary ? 'Checking…' : 'Validate source-summary (read-only)'}</button>
+        {summaryPreview && <p>Validated: {summaryPreview.title} · {summaryPreview.alias} · revision {summaryPreview.revisionId} · model {summaryPreview.generatorModel}. The current revision will be frozen when Run is clicked.</p>}
+      </div>}
+      <button type='button' disabled={!approved || runBusy || (summaryMode === 'existing' && !summaryAlias.trim())} onClick={runBenchmark}>{runBusy ? 'Running benchmark and scoring…' : 'Run Benchmark — Precision / Recall / F1'}</button>
       {!approved && <p>Save the human-approved Gold Set first.</p>}
-      {runResult && <><p>Run: {runResult.runId} · Model: {runResult.model} · awaiting human review</p><pre style={{whiteSpace:'pre-wrap',maxHeight:600,overflow:'auto'}}>{runResult.summary}</pre></>}
+      {runResult && <><p>Run: {runResult.runId} · Summary model: {runResult.model} · see Run Ledger for saved scores or retry</p><pre style={{whiteSpace:'pre-wrap',maxHeight:600,overflow:'auto'}}>{runResult.summary}</pre></>}
     </section>}
+    {approved && <WikiAssociationResults snapshotRevision={snapshotRevision} latestRunId={runResult?.runId} />}
   </>
 }
