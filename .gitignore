@@ -57,3 +57,9 @@ migration-v1/*.jsonl
 migration-v1/uploads.tar.gz
 
 # Local secrets / exports
+
+# Historical frontend build snapshots
+frontend/dist.prev-*
+frontend/dist.pre-*
+frontend/dist.before-*
+frontend/.next-before-*
