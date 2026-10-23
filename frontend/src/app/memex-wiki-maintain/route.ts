@@ -82,6 +82,13 @@ const slugifyWikiTitle = (value: string): string => {
 const derivedAlias = (pageType: string, title: string): string =>
   `memex-wiki-${pageType}-${slugifyWikiTitle(title)}`.slice(0, 160)
 
+const deterministicSourceSummaryAlias = (sourceAlias: string): string => {
+  const candidate = `memex-wiki-source-summary-${sourceAlias}`
+  if (candidate.length <= 160) return candidate
+  const digest = createHash('sha256').update(sourceAlias, 'utf8').digest('hex').slice(0, 12)
+  return `${candidate.slice(0, 147)}-${digest}`
+}
+
 const cleanText = (
   value: unknown,
   field: string,
@@ -430,14 +437,26 @@ export async function POST(request: NextRequest) {
 
       const pageType = normalizePageType(page.pageType)
       const title = cleanText(page.title, 'title', 160)
+      const sourceAliases = normalizeSourceAliases(page.sourceAliases)
+      if (pageType === 'source-summary' && sourceAliases.length !== 1) {
+        throw new Error('source-summary must reference exactly one raw HedgeDoc source alias')
+      }
+      const sourceSummaryAlias =
+        pageType === 'source-summary'
+          ? deterministicSourceSummaryAlias(sourceAliases[0])
+          : ''
       const registeredMatch = registry.find(
         (entry) =>
           entry.pageType === pageType &&
           entry.title.localeCompare(title, undefined, { sensitivity: 'base' }) === 0,
       )
-      const alias = requestedAlias || registeredMatch?.alias || derivedAlias(pageType, title)
+      if (pageType === 'source-summary' && requestedAlias && requestedAlias !== sourceSummaryAlias) {
+        throw new Error(`source-summary alias must be deterministic for ${sourceAliases[0]}`)
+      }
+      const alias =
+        sourceSummaryAlias || requestedAlias || registeredMatch?.alias || derivedAlias(pageType, title)
       const explicitAlias = Boolean(requestedAlias)
-      if (explicitAlias && !registeredAliases.has(alias)) {
+      if (explicitAlias && pageType !== 'source-summary' && !registeredAliases.has(alias)) {
         throw new Error(
           `Refusing to update ${alias}: it is not registered in ${WIKI_INDEX_ALIAS}`,
         )
@@ -445,7 +464,6 @@ export async function POST(request: NextRequest) {
 
       const description = cleanText(page.description, 'description', 500)
       const tags = normalizeTags(page.tags, pageType)
-      const sourceAliases = normalizeSourceAliases(page.sourceAliases)
       const sourcePages = normalizeSourcePages(page.sourcePages, pageType)
       const sourceAnchor = normalizeSourceAnchor(page.sourceAnchor, pageType)
       const benchmarkGoldGeneratorModel = normalizeBenchmarkGoldGeneratorModel(

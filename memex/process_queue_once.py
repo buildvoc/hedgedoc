@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import hashlib
 import json
 import os
 import re
@@ -37,6 +38,13 @@ WIKI_PAGE_TYPES = {
     "comparison",
     "synthesis",
 }
+
+def deterministic_source_summary_alias(source_alias):
+    candidate = f"memex-wiki-source-summary-{source_alias}"
+    if len(candidate) <= 160:
+        return candidate
+    digest = hashlib.sha256(source_alias.encode("utf-8")).hexdigest()[:12]
+    return f"{candidate[:147]}-{digest}"
 
 
 def load_model_settings():
@@ -1441,7 +1449,7 @@ def normalize_wiki_mutations(
             raise ValueError(f"Duplicate derived wiki mutation: {page_type} {title}")
         seen.add(key)
 
-        existing = registry.get(key)
+        existing = None if page_type == "source-summary" else registry.get(key)
         if page_type == "source-summary":
             source_matches = [
                 candidate
@@ -1462,11 +1470,14 @@ def normalize_wiki_mutations(
                 "full current page content was not supplied to the LLM"
             )
 
-        source_aliases = []
-        if existing:
-            source_aliases.extend(existing.get("sourceAliases", []))
-        if queued_alias not in source_aliases:
-            source_aliases.append(queued_alias)
+        if page_type == "source-summary":
+            source_aliases = [queued_alias]
+        else:
+            source_aliases = []
+            if existing:
+                source_aliases.extend(existing.get("sourceAliases", []))
+            if queued_alias not in source_aliases:
+                source_aliases.append(queued_alias)
 
         if page_type == "source-summary" and not allow_extract_fallback:
             validate_memex_summary_synthesis(body)
@@ -1660,7 +1671,9 @@ def normalize_wiki_mutations(
             if metadata_pages:
                 page["sourcePages"] = metadata_pages
             page["sourceAnchor"] = source_anchor
-        if existing:
+        if page_type == "source-summary":
+            page["alias"] = deterministic_source_summary_alias(queued_alias)
+        elif existing:
             page["alias"] = existing["alias"]
         pages.append(page)
 

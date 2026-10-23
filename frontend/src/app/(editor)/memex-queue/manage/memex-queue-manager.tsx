@@ -206,6 +206,9 @@ export const MemexQueueManager = ({
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('Loading Memex queue status…')
   const [error, setError] = useState('')
+  const [auditRunning, setAuditRunning] = useState(false)
+  const [auditLog, setAuditLog] = useState('')
+  const auditAbortRef = useRef<AbortController | null>(null)
   const stoppedRef = useRef(false)
   const terminalRef = useRef<HTMLPreElement | null>(null)
   const doclingTerminalRef = useRef<HTMLPreElement | null>(null)
@@ -387,6 +390,67 @@ export const MemexQueueManager = ({
     if (!doclingIngest.running || !ingestTerminalRef.current) return
     ingestTerminalRef.current.scrollTop = ingestTerminalRef.current.scrollHeight
   }, [doclingIngest.logTail, doclingIngest.running])
+
+  const runSourceSummaryAudit = async () => {
+    const controller = new AbortController()
+    auditAbortRef.current = controller
+    setAuditRunning(true)
+    setAuditLog('')
+    setError('')
+    setStatus('Running read-only source-summary identity audit…')
+
+    try {
+      const response = await fetch('/memex-source-summary-audit', {
+        cache: 'no-store',
+        signal: controller.signal
+      })
+
+      if (!response.ok || !response.body) {
+        const detail = await response.text()
+        throw new Error(detail || `Audit HTTP ${response.status}`)
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) {
+          setAuditLog(
+            (current) => current + decoder.decode(value, { stream: true })
+          )
+        }
+      }
+
+      const tail = decoder.decode()
+      if (tail) setAuditLog((current) => current + tail)
+      setStatus('Source-summary identity audit complete.')
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setAuditLog(
+          (current) =>
+            current +
+            (current.endsWith('\n') || !current ? '' : '\n') +
+            'AUDIT STOPPED BY USER\n'
+        )
+        setStatus('Source-summary identity audit stopped.')
+      } else {
+        const message =
+          error instanceof Error ? error.message : String(error)
+        setAuditLog(
+          (current) =>
+            current +
+            (current.endsWith('\n') || !current ? '' : '\n') +
+            `ERROR: ${message}\n`
+        )
+        setError(message)
+      }
+    } finally {
+      auditAbortRef.current = null
+      setAuditRunning(false)
+    }
+  }
 
   const removePending = async (alias: string) => {
     if (!window.confirm(`Remove ${sourceByAlias.get(alias)?.title ?? ingestedByAlias.get(alias)?.title ?? alias} from Pending?`)) {
@@ -1182,6 +1246,78 @@ export const MemexQueueManager = ({
             </details>
           </>
         )}
+      </section>
+
+      <section style={panelStyle}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            alignItems: 'center'
+          }}
+        >
+          <h2 style={{ margin: '0 auto 0 0' }}>
+            Source-summary identity audit
+          </h2>
+
+          <button
+            type='button'
+            style={{ ...buttonStyle, fontWeight: 600 }}
+            disabled={
+              auditRunning ||
+              processRunning ||
+              doclingBatch.running ||
+              doclingIngest.running
+            }
+            onClick={() => void runSourceSummaryAudit()}
+          >
+            {auditRunning ? 'Auditing…' : 'Run read-only audit'}
+          </button>
+
+          <button
+            type='button'
+            style={dangerButtonStyle}
+            disabled={!auditRunning}
+            onClick={() => auditAbortRef.current?.abort()}
+          >
+            Stop
+          </button>
+        </div>
+
+        <p>
+          Read-only audit of canonical, legacy, duplicate and corrupt
+          source-summary identities. No notes or index entries are changed.
+        </p>
+
+        <div style={{ marginBottom: '8px' }}>
+          <strong>Audit terminal</strong>
+          <span style={{ marginLeft: '8px', opacity: 0.7 }}>
+            {auditRunning ? 'live' : 'idle'}
+          </span>
+        </div>
+
+        <pre
+          aria-live='polite'
+          style={{
+            background: '#111',
+            borderRadius: '6px',
+            color: '#eee',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontSize: '12px',
+            lineHeight: 1.45,
+            margin: 0,
+            maxHeight: '520px',
+            minHeight: '180px',
+            overflow: 'auto',
+            padding: '12px',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          }}
+        >
+          {auditLog || 'No audit run yet.'}
+        </pre>
       </section>
 
       <section style={{ ...panelStyle, borderColor: 'var(--bs-danger, #dc3545)' }}>
