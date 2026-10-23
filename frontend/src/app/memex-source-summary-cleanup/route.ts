@@ -36,6 +36,7 @@ interface SourceSummaryRow {
     | 'REVIEW'
     | 'MULTI_SOURCE'
     | 'NO_SOURCE'
+    | 'OWNERSHIP_CONFLICT'
     | 'TARGET_EXISTS'
 }
 
@@ -334,7 +335,6 @@ const buildCleanupPlan = async (
       throw new Error(`Registered derived page is missing: ${entry.alias}`)
     }
 
-    assertDerivedWikiPage(markdown, entry.alias)
     const sourceAliases = sourceAliasesFromMarkdown(markdown)
 
     let rawSourceAlias = ''
@@ -348,7 +348,13 @@ const buildCleanupPlan = async (
     } else {
       rawSourceAlias = sourceAliases[0]
       expectedAlias = deterministicSourceSummaryAlias(rawSourceAlias)
-      status = entry.alias === expectedAlias ? 'CANONICAL' : 'PLAN'
+
+      try {
+        assertDerivedWikiPage(markdown, entry.alias)
+        status = entry.alias === expectedAlias ? 'CANONICAL' : 'PLAN'
+      } catch {
+        status = 'OWNERSHIP_CONFLICT'
+      }
     }
 
     rows.push({
@@ -459,6 +465,9 @@ const writePlanReport = (
   write(`CANONICAL: ${countStatus(plan.rows, 'CANONICAL')}`)
   write(`MULTI_SOURCE: ${countStatus(plan.rows, 'MULTI_SOURCE')}`)
   write(`NO_SOURCE: ${countStatus(plan.rows, 'NO_SOURCE')}`)
+  write(
+    `OWNERSHIP_CONFLICT: ${countStatus(plan.rows, 'OWNERSHIP_CONFLICT')}`
+  )
   write(`TARGET_EXISTS: ${countStatus(plan.rows, 'TARGET_EXISTS')}`)
   write('')
 
@@ -500,6 +509,19 @@ const writePlanReport = (
     write('')
     write('=== EXCLUDED: NO_SOURCE ===')
     for (const row of noSource) write(row.entry.alias)
+  }
+
+  const ownershipConflicts =
+    plan.rows.filter((row) => row.status === 'OWNERSHIP_CONFLICT')
+  if (ownershipConflicts.length > 0) {
+    write('')
+    write('=== EXCLUDED: OWNERSHIP_CONFLICT ===')
+    for (const row of ownershipConflicts) {
+      write(
+        `${row.entry.alias} source=${row.rawSourceAlias} ` +
+        `target=${row.expectedAlias}`
+      )
+    }
   }
 
   const targetExists =
@@ -783,7 +805,10 @@ export async function POST(request: NextRequest) {
         write(`migrated: ${plan.safe.length}`)
         write(`legacy delete warnings: ${deleteWarnings}`)
         write(`snapshot: ${snapshotDirectory}`)
-        write('REVIEW / MULTI_SOURCE / NO_SOURCE / TARGET_EXISTS were untouched.')
+        write(
+          'REVIEW / MULTI_SOURCE / NO_SOURCE / OWNERSHIP_CONFLICT / ' +
+          'TARGET_EXISTS were untouched.'
+        )
         write('APPLY COMPLETE')
         write(`finished: ${new Date().toISOString()}`)
       } catch (error) {
