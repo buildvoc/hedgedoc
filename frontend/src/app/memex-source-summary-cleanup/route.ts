@@ -53,6 +53,83 @@ type ProgressWriter = (line?: string) => void
 const sleep = async (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds))
 
+const HEDGEDOC_REQUEST_GAP_MS = Math.max(
+  1000,
+  Number(
+    process.env.MEMEX_HEDGEDOC_CLEANUP_REQUEST_GAP_MS ?? '2000'
+  ) || 2000
+)
+
+let nextHedgeDocRequestAt = 0
+
+const sleepWithSignal = async (
+  milliseconds: number,
+  signal?: AbortSignal
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('Request cancelled'))
+      return
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort)
+      resolve()
+    }, milliseconds)
+
+    const abort = () => {
+      clearTimeout(timer)
+      reject(new Error('Request cancelled'))
+    }
+
+    signal?.addEventListener('abort', abort, { once: true })
+  })
+
+const waitForHedgeDocSlot = async (
+  signal?: AbortSignal
+): Promise<void> => {
+  const now = Date.now()
+  const scheduled = Math.max(now, nextHedgeDocRequestAt)
+
+  nextHedgeDocRequestAt = scheduled + HEDGEDOC_REQUEST_GAP_MS
+
+  if (scheduled > now) {
+    await sleepWithSignal(scheduled - now, signal)
+  }
+}
+
+const rateLimitDelayMs = (
+  response: Response,
+  detail: string
+): number => {
+  const retryAfter = response.headers.get('retry-after')
+
+  if (retryAfter) {
+    const seconds = Number(retryAfter)
+
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return seconds * 1000 + 5000
+    }
+
+    const date = Date.parse(retryAfter)
+    if (Number.isFinite(date)) {
+      return Math.max(5000, date - Date.now() + 5000)
+    }
+  }
+
+  const minutes = detail.match(/(\d+)\s+minutes?/i)
+  if (minutes) {
+    return Number(minutes[1]) * 60_000 + 5000
+  }
+
+  const seconds = detail.match(/(\d+)\s+seconds?/i)
+  if (seconds) {
+    return Number(seconds[1]) * 1000 + 5000
+  }
+
+  return 60_000
+}
+
 const apiHeaders = (token: string): Record<string, string> => ({
   Authorization: `Bearer ${token}`
 })
@@ -88,6 +165,7 @@ const fetchNote = async (
     if (signal?.aborted) throw new Error('Request cancelled')
 
     try {
+      await waitForHedgeDocSlot(signal)
       const response = await fetch(
         `${HEDGEDOC_NOTES_API}/${encodeURIComponent(alias)}/content`,
         {
@@ -104,6 +182,14 @@ const fetchNote = async (
       lastError =
         `HedgeDoc GET ${alias} failed (${response.status})` +
         (detail ? `: ${detail.slice(0, 200)}` : '')
+
+      if (response.status === 429 && attempt < 5) {
+        await sleepWithSignal(
+          rateLimitDelayMs(response, detail),
+          signal
+        )
+        continue
+      }
 
       if (!retryableStatus(response.status)) break
     } catch (error) {
@@ -125,6 +211,7 @@ const createNamedNote = async (
   let lastError = ''
 
   for (let attempt = 1; attempt <= 5; attempt += 1) {
+    await waitForHedgeDocSlot()
     const response = await fetch(
       `${HEDGEDOC_NOTES_API}/${encodeURIComponent(alias)}`,
       {
@@ -145,6 +232,11 @@ const createNamedNote = async (
       `HedgeDoc POST ${alias} failed (${response.status})` +
       (detail ? `: ${detail.slice(0, 200)}` : '')
 
+    if (response.status === 429 && attempt < 5) {
+      await sleep(rateLimitDelayMs(response, detail))
+      continue
+    }
+
     if (response.status === 409 || !retryableStatus(response.status)) break
     if (attempt < 5) await sleep(attempt * 600)
   }
@@ -160,6 +252,7 @@ const putNote = async (
   let lastError = ''
 
   for (let attempt = 1; attempt <= 5; attempt += 1) {
+    await waitForHedgeDocSlot()
     const response = await fetch(
       `${HEDGEDOC_NOTES_API}/${encodeURIComponent(alias)}`,
       {
@@ -180,6 +273,11 @@ const putNote = async (
       `HedgeDoc PUT ${alias} failed (${response.status})` +
       (detail ? `: ${detail.slice(0, 200)}` : '')
 
+    if (response.status === 429 && attempt < 5) {
+      await sleep(rateLimitDelayMs(response, detail))
+      continue
+    }
+
     if (!retryableStatus(response.status)) break
     if (attempt < 5) await sleep(attempt * 600)
   }
@@ -194,6 +292,7 @@ const deleteNote = async (
   let lastError = ''
 
   for (let attempt = 1; attempt <= 5; attempt += 1) {
+    await waitForHedgeDocSlot()
     const response = await fetch(
       `${HEDGEDOC_NOTES_API}/${encodeURIComponent(alias)}`,
       {
@@ -213,6 +312,11 @@ const deleteNote = async (
     lastError =
       `HedgeDoc DELETE ${alias} failed (${response.status})` +
       (detail ? `: ${detail.slice(0, 200)}` : '')
+
+    if (response.status === 429 && attempt < 5) {
+      await sleep(rateLimitDelayMs(response, detail))
+      continue
+    }
 
     if (!retryableStatus(response.status)) break
     if (attempt < 5) await sleep(attempt * 600)
