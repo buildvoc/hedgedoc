@@ -209,6 +209,14 @@ export const MemexQueueManager = ({
   const [auditRunning, setAuditRunning] = useState(false)
   const [auditLog, setAuditLog] = useState('')
   const auditAbortRef = useRef<AbortController | null>(null)
+  const [cleanupRunning, setCleanupRunning] = useState(false)
+  const [cleanupMode, setCleanupMode] = useState<'preview' | 'apply' | ''>('')
+  const [cleanupLog, setCleanupLog] = useState('')
+  const [cleanupPreviewHash, setCleanupPreviewHash] = useState('')
+  const [cleanupPlanCount, setCleanupPlanCount] = useState(0)
+  const [cleanupConfirmation, setCleanupConfirmation] = useState('')
+  const cleanupAbortRef = useRef<AbortController | null>(null)
+  const cleanupTerminalRef = useRef<HTMLPreElement | null>(null)
   const stoppedRef = useRef(false)
   const terminalRef = useRef<HTMLPreElement | null>(null)
   const doclingTerminalRef = useRef<HTMLPreElement | null>(null)
@@ -391,6 +399,12 @@ export const MemexQueueManager = ({
     ingestTerminalRef.current.scrollTop = ingestTerminalRef.current.scrollHeight
   }, [doclingIngest.logTail, doclingIngest.running])
 
+  useEffect(() => {
+    if (!cleanupTerminalRef.current) return
+    cleanupTerminalRef.current.scrollTop =
+      cleanupTerminalRef.current.scrollHeight
+  }, [cleanupLog])
+
   const runSourceSummaryAudit = async () => {
     const controller = new AbortController()
     auditAbortRef.current = controller
@@ -449,6 +463,137 @@ export const MemexQueueManager = ({
     } finally {
       auditAbortRef.current = null
       setAuditRunning(false)
+    }
+  }
+
+  const runSourceSummaryCleanup = async (
+    action: 'preview' | 'apply'
+  ) => {
+    if (cleanupRunning) return
+
+    if (action === 'apply') {
+      if (!cleanupPreviewHash) {
+        setError('Run Preview cleanup before Apply cleanup.')
+        return
+      }
+
+      if (cleanupConfirmation !== 'APPLY') {
+        setError('Type APPLY to confirm source-summary cleanup.')
+        return
+      }
+    }
+
+    const controller = new AbortController()
+    cleanupAbortRef.current = controller
+    setCleanupRunning(true)
+    setCleanupMode(action)
+    setCleanupLog('')
+    setError('')
+    setStatus(
+      action === 'preview'
+        ? 'Building read-only source-summary cleanup preview…'
+        : 'Applying deterministic source-summary cleanup…'
+    )
+
+    let fullLog = ''
+
+    try {
+      const response = await fetch('/memex-source-summary-cleanup', {
+        method: 'POST',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action,
+          previewHash: action === 'apply' ? cleanupPreviewHash : undefined,
+          confirmation: action === 'apply' ? cleanupConfirmation : undefined
+        })
+      })
+
+      if (!response.ok || !response.body) {
+        const detail = await response.text()
+        throw new Error(detail || `Cleanup HTTP ${response.status}`)
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value) continue
+
+        const chunk = decoder.decode(value, { stream: true })
+        fullLog += chunk
+        setCleanupLog((current) => current + chunk)
+      }
+
+      const tail = decoder.decode()
+      if (tail) {
+        fullLog += tail
+        setCleanupLog((current) => current + tail)
+      }
+
+      if (/^FATAL:/m.test(fullLog)) {
+        const fatal =
+          fullLog.match(/^FATAL:\s*(.+)$/m)?.[1] ??
+          'Source-summary cleanup failed.'
+        setError(fatal)
+        setStatus('Source-summary cleanup failed.')
+        return
+      }
+
+      if (action === 'preview') {
+        const previewHash =
+          fullLog.match(/^PREVIEW_HASH:\s*([0-9a-f]{64})$/m)?.[1] ?? ''
+        const safeCount = Number(
+          fullLog.match(/^SAFE_PLAN_COUNT:\s*(\d+)$/m)?.[1] ?? '0'
+        )
+
+        setCleanupPreviewHash(previewHash)
+        setCleanupPlanCount(safeCount)
+        setCleanupConfirmation('')
+        setStatus(
+          `Source-summary cleanup preview complete: ${safeCount} safe migrations.`
+        )
+      } else if (/^APPLY COMPLETE$/m.test(fullLog)) {
+        setCleanupPreviewHash('')
+        setCleanupPlanCount(0)
+        setCleanupConfirmation('')
+        setStatus('Source-summary cleanup apply complete.')
+      }
+    } catch (error) {
+      if (controller.signal.aborted && action === 'preview') {
+        setCleanupLog(
+          (current) =>
+            current +
+            (current.endsWith('
+') || !current ? '' : '
+') +
+            'PREVIEW STOPPED BY USER
+'
+        )
+        setStatus('Source-summary cleanup preview stopped.')
+      } else {
+        const message =
+          error instanceof Error ? error.message : String(error)
+        setCleanupLog(
+          (current) =>
+            current +
+            (current.endsWith('
+') || !current ? '' : '
+') +
+            `CLIENT ERROR: ${message}
+`
+        )
+        setError(message)
+      }
+    } finally {
+      cleanupAbortRef.current = null
+      setCleanupRunning(false)
+      setCleanupMode('')
     }
   }
 
@@ -1317,6 +1462,136 @@ export const MemexQueueManager = ({
           }}
         >
           {auditLog || 'No audit run yet.'}
+        </pre>
+      </section>
+
+      <section style={panelStyle}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            alignItems: 'center'
+          }}
+        >
+          <h2 style={{ margin: '0 auto 0 0' }}>
+            Source-summary cleanup
+          </h2>
+
+          <button
+            type='button'
+            style={{ ...buttonStyle, fontWeight: 600 }}
+            disabled={
+              cleanupRunning ||
+              auditRunning ||
+              processRunning ||
+              doclingBatch.running ||
+              doclingIngest.running
+            }
+            onClick={() => void runSourceSummaryCleanup('preview')}
+          >
+            {cleanupRunning && cleanupMode === 'preview'
+              ? 'Previewing…'
+              : 'Preview cleanup'}
+          </button>
+
+          <button
+            type='button'
+            style={dangerButtonStyle}
+            disabled={
+              cleanupRunning ||
+              !cleanupPreviewHash ||
+              cleanupConfirmation !== 'APPLY' ||
+              auditRunning ||
+              processRunning ||
+              doclingBatch.running ||
+              doclingIngest.running
+            }
+            onClick={() => void runSourceSummaryCleanup('apply')}
+          >
+            {cleanupRunning && cleanupMode === 'apply'
+              ? 'Applying…'
+              : 'Apply cleanup'}
+          </button>
+
+          <button
+            type='button'
+            style={buttonStyle}
+            disabled={!cleanupRunning || cleanupMode !== 'preview'}
+            onClick={() => cleanupAbortRef.current?.abort()}
+          >
+            Stop preview
+          </button>
+        </div>
+
+        <p>
+          Deterministic migration only; no LLM. Preview computes the safe
+          old-alias → source-derived-alias plan. REVIEW, MULTI_SOURCE,
+          NO_SOURCE and target collisions remain untouched. Apply snapshots
+          the index and every affected legacy note before mutation.
+        </p>
+
+        <div
+          style={{
+            alignItems: 'center',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            marginBottom: '10px'
+          }}
+        >
+          <label htmlFor='source-summary-cleanup-confirmation'>
+            Confirmation
+          </label>
+          <input
+            id='source-summary-cleanup-confirmation'
+            type='text'
+            value={cleanupConfirmation}
+            disabled={cleanupRunning || !cleanupPreviewHash}
+            placeholder='Type APPLY'
+            onChange={(event) =>
+              setCleanupConfirmation(event.target.value)
+            }
+            style={{
+              minWidth: '180px',
+              padding: '6px 8px'
+            }}
+          />
+          <span style={{ opacity: 0.75 }}>
+            {cleanupPreviewHash
+              ? `${cleanupPlanCount} safe migrations previewed`
+              : 'Preview required before apply'}
+          </span>
+        </div>
+
+        <div style={{ marginBottom: '8px' }}>
+          <strong>Cleanup terminal</strong>
+          <span style={{ marginLeft: '8px', opacity: 0.7 }}>
+            {cleanupRunning ? cleanupMode : 'idle'}
+          </span>
+        </div>
+
+        <pre
+          ref={cleanupTerminalRef}
+          aria-live='polite'
+          style={{
+            background: '#111',
+            borderRadius: '6px',
+            color: '#eee',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontSize: '12px',
+            lineHeight: 1.45,
+            margin: 0,
+            maxHeight: '520px',
+            minHeight: '180px',
+            overflow: 'auto',
+            padding: '12px',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          }}
+        >
+          {cleanupLog || 'No cleanup preview has been run yet.'}
         </pre>
       </section>
 
