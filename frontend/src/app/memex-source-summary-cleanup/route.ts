@@ -396,30 +396,9 @@ const buildCleanupPlan = async (
     }
   }
 
-  const targetCandidates = rows.filter((row) => row.status === 'PLAN')
-  write(`checking ${targetCandidates.length} deterministic target aliases…`)
-
-  for (let index = 0; index < targetCandidates.length; index += 1) {
-    const row = targetCandidates[index]
-    const existingTarget = await fetchNote(
-      row.expectedAlias,
-      token,
-      signal,
-      true
-    )
-
-    if (existingTarget !== null) row.status = 'TARGET_EXISTS'
-
-    if (
-      index === 0 ||
-      (index + 1) % 25 === 0 ||
-      index + 1 === targetCandidates.length
-    ) {
-      write(`target checks ${index + 1}/${targetCandidates.length}`)
-    }
-
-    await sleep(75)
-  }
+  write(
+    'target existence checks deferred to apply to avoid HedgeDoc rate-limit amplification'
+  )
 
   const safe = rows
     .filter((row) => row.status === 'PLAN')
