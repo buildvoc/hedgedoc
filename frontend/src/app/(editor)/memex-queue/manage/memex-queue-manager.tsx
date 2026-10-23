@@ -569,11 +569,8 @@ export const MemexQueueManager = ({
         setCleanupLog(
           (current) =>
             current +
-            (current.endsWith('
-') || !current ? '' : '
-') +
-            'PREVIEW STOPPED BY USER
-'
+            (current.endsWith('\n') || !current ? '' : '\n') +
+            'PREVIEW STOPPED BY USER\n'
         )
         setStatus('Source-summary cleanup preview stopped.')
       } else {
@@ -582,11 +579,8 @@ export const MemexQueueManager = ({
         setCleanupLog(
           (current) =>
             current +
-            (current.endsWith('
-') || !current ? '' : '
-') +
-            `CLIENT ERROR: ${message}
-`
+            (current.endsWith('\n') || !current ? '' : '\n') +
+            `CLIENT ERROR: ${message}\n`
         )
         setError(message)
       }
