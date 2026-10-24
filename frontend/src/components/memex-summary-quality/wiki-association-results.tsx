@@ -2,7 +2,7 @@
 
 // Wiki results use the same card/ledger/table/chart/network presentation contract
 // as memex-association-benchmarks, with Gold fact coverage as the measured subject.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Badge, Button, Card, Form, Spinner, Table } from 'react-bootstrap'
 
 type Fact = { id: string; expectation: string }
@@ -18,16 +18,14 @@ type Judged = {
   runId: string
   rows: Judgement[]
   status: string
-  judgeModel?: string
-  runtimeMs?: number
-  decisionMetrics?: { precision: number; recall: number; f1: number; falsePositives: number; falseNegatives: number; verifiedClaims: number; scoringMethod: string }
   goldCoverage: { supported: number; partial: number; missing: number; incorrect: number; total: number; strictRecall: number }
 }
-type Run = { runId: string; createdAt: string; model: string; judged: boolean; referenceAlias?: string; sourceAlias?: string; summaryMode?: string; sourceSummaryAlias?: string; sourceSummaryRevision?: string; judgeModel?: string; runtimeMs?: number }
-type Details = { run: { runId: string; summary: string; model: string; summaryMode?: string; sourceSummary?: { alias: string; revisionId: string; title: string; generatorModel: string }; source?: { alias: string; revisionId: string }; goldReferenceAlias?: string }; facts: Fact[]; result: Judged | null; error?: string }
+type ClaimAudit = { runId: string; status: 'extract' | 'verify' | 'complete'; extractedChunks: number; totalChunks: number; verifiedClaims: number; totalClaims: number; precision: number | null; recall: number; f1: number | null; falsePositives: number | null; falseNegatives: number; auditedClaimCount: number | null; model: string; claims?: Array<{ claim: string; quote: string; supported: boolean; confidence: number; reason: string; sourceEvidence: string }> }
+type Run = { runId: string; createdAt: string; model: string; judged: boolean; referenceAlias?: string; sourceAlias?: string }
+type Details = { run: { runId: string; summary: string; model: string }; facts: Fact[]; result: Judged | null; error?: string }
 const API = '/memex-wiki-summary-quality-benchmarks/judge'
+const PRECISION_API = '/memex-wiki-summary-quality-benchmarks/precision'
 const percent = (n: number | undefined) => Number.isFinite(n) ? `${(100 * (n ?? 0)).toFixed(1)}%` : '—'
-const runtime = (n: number | undefined) => typeof n === 'number' && Number.isFinite(n) ? `${(n / 1000).toFixed(1)}s` : '—'
 const colors: Record<string, string> = { 'True positive': 'success', 'False negative': 'warning', 'Partial': 'info', 'Incorrect': 'danger' }
 
 // Adapt the Association Benchmark's SVG quality chart. Only Gold recall is
@@ -50,7 +48,7 @@ function QualityChart({ values }: { values: Array<{ id: string; recall: number }
         <text fontSize='10' fill='currentColor' textAnchor='end' transform={`translate(${x(i)+3} ${height-12}) rotate(-35)`}>{v.id.slice(0, 10)}</text>
       </g>)}
     </svg>
-    <div className='small text-muted'>Dashed: strict Gold-fact recall. Precision, Recall and F1 are saved with model decisions.</div>
+    <div className='small text-muted'>Dashed: strict Gold-fact recall. Precision and F1 require a separate claim-level source audit.</div>
   </div>
 }
 
@@ -85,11 +83,15 @@ export function WikiAssociationResults({ snapshotRevision, referenceAlias = '', 
   const [selected, setSelected] = useState('')
   const [details, setDetails] = useState<Details | null>(null)
   const [trend, setTrend] = useState<Array<{ id: string; recall: number }>>([])
-  const [scoresByRun, setScoresByRun] = useState<Record<string, Judged>>({})
   const [modelFilter, setModelFilter] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState('')
   const [loading, setLoading] = useState(false)
   const [judging, setJudging] = useState(false)
+  const [auditing, setAuditing] = useState(false)
+  const [claimAudit, setClaimAudit] = useState<ClaimAudit | null>(null)
+  const [auditsByRun, setAuditsByRun] = useState<Record<string, ClaimAudit>>({})
+  const autoStarted = useRef(new Set<string>())
+  const judgeStarted = useRef(new Set<string>())
   const [error, setError] = useState('')
   const loadDetails = useCallback(async (id: string) => {
     const r = await fetch(`${API}?snapshotRevision=${encodeURIComponent(snapshotRevision)}&runId=${encodeURIComponent(id)}`, { cache: 'no-store' })
@@ -98,11 +100,16 @@ export function WikiAssociationResults({ snapshotRevision, referenceAlias = '', 
     return data
   }, [snapshotRevision])
   const select = useCallback(async (id: string) => {
-    setSelected(id); setDetails(null); setError('')
+    setSelected(id); setDetails(null); setClaimAudit(null); setError('')
     if (!id) return
     setLoading(true)
     try {
-      setDetails(await loadDetails(id))
+      const [detail, precision] = await Promise.all([
+        loadDetails(id),
+        fetch(`${PRECISION_API}?runId=${encodeURIComponent(id)}`, { cache: 'no-store' })
+          .then(async r => r.ok ? (await r.json() as { audit: ClaimAudit | null }).audit : null),
+      ])
+      setDetails(detail); setClaimAudit(precision); if (precision) setAuditsByRun(old => ({ ...old, [id]: precision }))
     } catch (e) { setError(String(e)) } finally { setLoading(false) }
   }, [loadDetails])
   const refresh = useCallback(async (preferred?: string) => {
@@ -113,13 +120,21 @@ export function WikiAssociationResults({ snapshotRevision, referenceAlias = '', 
     setRuns(found)
     // Cap background detailed requests; no model calls are made by this step.
     const evaluated = found.filter(v=>v.judged).slice(0, 25)
-    const saved = await Promise.all(evaluated.map(async run => {
-      try { const d = await loadDetails(run.runId); return d.result ? [run.runId, d.result] as const : null }
+    const scores = await Promise.all(evaluated.map(async run => {
+      try { const d = await loadDetails(run.runId); return d.result ? { id:run.runId, recall:d.result.goldCoverage.strictRecall } : null }
       catch { return null }
     }))
-    const complete = saved.filter((x): x is readonly [string, Judged] => x !== null)
-    setScoresByRun(Object.fromEntries(complete))
-    setTrend(complete.map(([id, score]) => ({ id, recall: score.goldCoverage.strictRecall })).reverse())
+    setTrend(scores.filter((x): x is { id: string; recall: number } => x !== null).reverse())
+    // Load already-saved scores for every ledger row, not only the selected run.
+    const saved = await Promise.all(evaluated.map(async run => {
+      try {
+        const r = await fetch(`${PRECISION_API}?runId=${encodeURIComponent(run.runId)}`, { cache: 'no-store' })
+        if (!r.ok) return null
+        const { audit } = await r.json() as { audit: ClaimAudit | null }
+        return audit ? [run.runId, audit] as const : null
+      } catch { return null }
+    }))
+    setAuditsByRun(Object.fromEntries(saved.filter((a): a is readonly [string, ClaimAudit] => a !== null)))
     return preferred && found.some(x=>x.runId===preferred) ? preferred : found[0]?.runId || ''
   }, [loadDetails, snapshotRevision, referenceAlias])
   useEffect(() => {
@@ -142,8 +157,44 @@ export function WikiAssociationResults({ snapshotRevision, referenceAlias = '', 
       await select(selected)
     } catch(e) { setError(String(e)) } finally { setJudging(false) }
   }
-  // Run Benchmark already POSTs /judge once. Do not trigger a second automatic
-  // GPU inference while that POST is still in flight; manual Retry remains available.
+  async function auditPrecision() {
+    if (!selected || !details?.result || auditing || claimAudit?.status === 'complete') return
+    setAuditing(true); setError('')
+    try {
+      // Each POST performs one checkpointed LLM request. Completed 161 Gold
+      // assessments are reused, never repeated; refresh/resume is safe.
+      for (let step = 0; step < 650; step++) {
+        const response = await fetch(PRECISION_API, { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runId: selected }) })
+        const payload = await response.json() as { audit?: ClaimAudit; error?: string }
+        if (!response.ok || !payload.audit) throw new Error(payload.error || `Claim audit HTTP ${response.status}`)
+        setClaimAudit(payload.audit)
+        setAuditsByRun(old => ({ ...old, [selected]: payload.audit! }))
+        if (payload.audit.status === 'complete') return
+      }
+      throw new Error('Claim audit step limit reached; refresh and resume')
+    } catch (e) { setError(String(e)) } finally { setAuditing(false) }
+  }
+  // The user's Run Benchmark action creates a run, then selects it here.
+  // Judge its Gold facts once, using the persisted judge result on refresh.
+  useEffect(() => {
+    if (!latestRunId || selected !== latestRunId || !details || loading || judging || details.result || judgeStarted.current.has(selected)) return
+    judgeStarted.current.add(selected)
+    void judge()
+    // One attempt per generated run: explicit retry remains available.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestRunId, selected, details, loading, judging])
+  // A single Gold evaluation now automatically continues through claim checks
+  // and F1 calculation. Existing judged runs start the audit on selection.
+  // Mark each selected run once to avoid rerender-triggered duplicate model calls.
+  useEffect(() => {
+    if (!selected || !details?.result || loading || claimAudit?.status === 'complete' || autoStarted.current.has(selected)) return
+    autoStarted.current.add(selected)
+    void auditPrecision()
+    // auditPrecision owns the in-flight request sequence; its changing identity
+    // must not restart a checkpointed audit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, details, loading, claimAudit?.status])
   return <div className='d-flex flex-column gap-3 mt-4'>
     <Card><Card.Body>
       <div className='d-flex flex-wrap align-items-end gap-3 mb-3'>
@@ -155,17 +206,9 @@ export function WikiAssociationResults({ snapshotRevision, referenceAlias = '', 
     </Card.Body></Card>
     <Card><Card.Body>
       <h2 className='h4'>Run ledger</h2>
-      <p className='small text-muted'>Model-assessed, unverified. Precision, Recall and F1 are saved together from model decisions during one integrated evaluation.</p>
+      <p className='small text-muted'>Model-assessed, unverified. Decision recall uses supported Gold facts; Decision precision independently checks generated summary claims against the frozen original. F1 is their harmonic mean. One Run Benchmark action evaluates Gold coverage, verifies generated claims against the frozen original, and saves Precision / Recall / F1. Incomplete results are never reported as final.</p>
       <div style={{ overflowX:'auto' }}><Table bordered hover responsive size='sm'><thead><tr><th>Run</th><th>Model</th><th>Scope</th><th>Decision Precision</th><th>Decision Recall</th><th>Decision F1</th><th>FP</th><th>FN</th><th>Pairs</th><th>Runtime</th></tr></thead><tbody>
-        {filteredRuns.map(r=>{ const score = scoresByRun[r.runId]; const decisions = score?.decisionMetrics; const coverage = score?.goldCoverage
-          return <tr key={r.runId} onClick={()=>void select(r.runId)} style={{cursor:'pointer'}}>
-            <td><code>{r.runId}</code></td>
-            <td><code>{r.model}</code>{r.judgeModel && <div className='small text-muted'>Judge: <code>{r.judgeModel}</code></div>}</td>
-            <td>{r.summaryMode === 'existing' ? 'Existing source-summary' : 'Generated summary'}{r.sourceSummaryAlias && <div className='small'><code>{r.sourceSummaryAlias}</code></div>}</td>
-            <td>{percent(decisions?.precision)}</td><td>{percent(decisions?.recall ?? coverage?.strictRecall)}</td><td>{percent(decisions?.f1)}</td>
-            <td>{decisions?.falsePositives ?? '—'}</td><td>{decisions?.falseNegatives ?? '—'}</td><td>{coverage ? `${coverage.total}/${coverage.total}` : '—'}</td>
-            <td>{runtime(r.runtimeMs)}</td>
-          </tr>})}
+        {filteredRuns.map(r=><tr key={r.runId} onClick={()=>void select(r.runId)} style={{cursor:'pointer'}}><td><code>{r.runId}</code></td><td><code>{r.model}</code></td><td>Gold facts</td><td>{auditsByRun[r.runId]?.status==='complete'?percent(auditsByRun[r.runId].precision ?? undefined):'—'}</td><td>{selected===r.runId && metrics?percent(metrics.strictRecall):'—'}</td><td>{auditsByRun[r.runId]?.status==='complete'?percent(auditsByRun[r.runId].f1 ?? undefined):'—'}</td><td>{auditsByRun[r.runId]?.status==='complete'?auditsByRun[r.runId].falsePositives:'—'}</td><td>{selected===r.runId && metrics ? metrics.total-metrics.supported:'—'}</td><td>{selected===r.runId && metrics?`${metrics.total}/${metrics.total}`:'—'}</td><td>—</td></tr>)}
       </tbody></Table></div>
     </Card.Body></Card>
     <Card><Card.Body>
@@ -176,15 +219,24 @@ export function WikiAssociationResults({ snapshotRevision, referenceAlias = '', 
       {error && <Alert variant='danger'>{error}</Alert>}
       {loading ? <div className='d-flex align-items-center gap-2'><Spinner animation='border' size='sm'/> Loading detailed results…</div> : <>
         {details && <div className='mb-3'><Badge bg={details.result?'info':'warning'}>{details.result?'Model assessed · unverified':'Pending LLM evaluation'}</Badge>{' '}<code>{details.run.model}</code>{' '}<Button variant='outline-secondary' size='sm' onClick={()=>void refresh(selected).then(id=>select(id)).catch(e=>setError(String(e)))}>Refresh runs</Button>
-          <p className='small mb-1'>Summary: {details.run.summaryMode === 'existing' ? 'Existing HedgeDoc revision' : 'Generated for benchmark'}
-            {details.run.sourceSummary && <> · <code>{details.run.sourceSummary.alias}</code> · rev <code>{details.run.sourceSummary.revisionId}</code></>}
-            {details.run.source && <> · Original <code>{details.run.source.alias}</code> rev <code>{details.run.source.revisionId}</code></>}
-            {details.run.goldReferenceAlias && <> · Gold <code>{details.run.goldReferenceAlias}</code></>}
-            {details.result?.judgeModel && <> · Judge <code>{details.result.judgeModel}</code></>}
-          </p>
           <details className='mt-2'><summary>Frozen generated summary</summary><pre style={{whiteSpace:'pre-wrap',maxHeight:340,overflow:'auto'}}>{details.run.summary}</pre></details>
           {!details.result && <div className='mt-2'><Button onClick={()=>void judge()} disabled={judging}>{judging ? 'Evaluating Gold facts…' : 'Retry Gold evaluation from saved run'}</Button></div>}
-          {details.result?.decisionMetrics && <div className='mt-2 small'>Precision {percent(details.result.decisionMetrics.precision)} · Recall {percent(details.result.decisionMetrics.recall)} · F1 {percent(details.result.decisionMetrics.f1)}</div>}
+          {details.result && <div className='mt-2'>
+            {auditing && <span className='small'><Spinner animation='border' size='sm' className='me-2' />Calculating Precision/F1 automatically…</span>}
+            {!auditing && error && claimAudit?.status !== 'complete' &&
+              <Button variant='outline-warning' size='sm' onClick={() => void auditPrecision()}>Retry scoring from checkpoint</Button>}
+            {!auditing && !error && claimAudit?.status === 'complete' && <Badge bg='success'>Precision/F1 saved</Badge>}
+            {claimAudit && <span className='ms-2 small'>
+              {claimAudit.status === 'extract' ? `Extracted ${claimAudit.extractedChunks}/${claimAudit.totalChunks} summary chunks` :
+                claimAudit.status === 'verify' ? `Verified ${claimAudit.verifiedClaims}/${claimAudit.totalClaims} summary claims` :
+                `Claim precision ${percent(claimAudit.precision ?? undefined)} · Gold recall ${percent(claimAudit.recall)} · F1 ${percent(claimAudit.f1 ?? undefined)}`}
+            </span>}
+          </div>}
+          {claimAudit?.status === 'complete' && <details className='mt-2'><summary>Audited generated claims ({claimAudit.auditedClaimCount})</summary>
+            <div style={{maxHeight:320,overflowY:'auto'}}>{claimAudit.claims?.map((claim,i)=><p key={i} className='small mb-2'>
+              <Badge bg={claim.supported?'success':'danger'}>{claim.supported?'Supported':'Unsupported'}</Badge>{' '}{claim.claim}<br/>{claim.reason}{claim.sourceEvidence && <><br/>Source: {claim.sourceEvidence}</>}
+            </p>)}</div>
+          </details>}
         </div>}
         <h2 className='h4'>Pair results</h2>
         <div style={{overflowX:'auto',maxHeight:520}}><Table bordered hover responsive size='sm'><thead><tr><th>Source A</th><th>Source B</th><th>Gold</th><th>Prediction</th><th>Confidence</th><th>Outcome</th><th>Reason</th></tr></thead><tbody>
