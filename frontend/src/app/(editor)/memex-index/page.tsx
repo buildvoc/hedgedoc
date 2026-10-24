@@ -20,8 +20,8 @@ interface IndexTrail {
   members: IndexSource[]
 }
 
-const sourcePattern =
-  /^- \[([^\]]+)\]\([^)]*\/n\/([^?#)]+)[^)]*\)(?: — (.*))?$/gm
+const sourceLinePattern =
+  /^- \[(.*)\]\([^)]*\/(?:n|p|s)\/([^?#)]+)[^)]*\)(?: — (.*))?$/
 
 function plainText(value: string) {
   return value
@@ -42,10 +42,11 @@ function anchor(value: string, fallback: string) {
 function parseSources(section: string): IndexSource[] {
   const result: IndexSource[] = []
   const seen = new Set<string>()
-  sourcePattern.lastIndex = 0
 
-  let match: RegExpExecArray | null
-  while ((match = sourcePattern.exec(section)) !== null) {
+  for (const line of section.split(/\r?\n/)) {
+    const match = line.match(sourceLinePattern)
+    if (!match) continue
+
     const alias = decodeURIComponent(match[2])
     if (seen.has(alias)) continue
     seen.add(alias)

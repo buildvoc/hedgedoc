@@ -217,6 +217,16 @@ export const MemexQueueManager = ({
   const [cleanupConfirmation, setCleanupConfirmation] = useState('')
   const cleanupAbortRef = useRef<AbortController | null>(null)
   const cleanupTerminalRef = useRef<HTMLPreElement | null>(null)
+  const [indexRefreshRunning, setIndexRefreshRunning] = useState(false)
+  const [indexRefreshMode, setIndexRefreshMode] = useState<'preview' | 'apply' | ''>('')
+  const [indexRefreshLog, setIndexRefreshLog] = useState('')
+  const [indexRefreshPreviewHash, setIndexRefreshPreviewHash] = useState('')
+  const [indexRefreshMissingCount, setIndexRefreshMissingCount] = useState(0)
+  const [indexRefreshResultCount, setIndexRefreshResultCount] = useState(0)
+  const [indexRefreshTrailCount, setIndexRefreshTrailCount] = useState(0)
+  const [indexRefreshConfirmation, setIndexRefreshConfirmation] = useState('')
+  const indexRefreshAbortRef = useRef<AbortController | null>(null)
+  const indexRefreshTerminalRef = useRef<HTMLPreElement | null>(null)
   const stoppedRef = useRef(false)
   const terminalRef = useRef<HTMLPreElement | null>(null)
   const doclingTerminalRef = useRef<HTMLPreElement | null>(null)
@@ -405,6 +415,12 @@ export const MemexQueueManager = ({
       cleanupTerminalRef.current.scrollHeight
   }, [cleanupLog])
 
+  useEffect(() => {
+    if (!indexRefreshTerminalRef.current) return
+    indexRefreshTerminalRef.current.scrollTop =
+      indexRefreshTerminalRef.current.scrollHeight
+  }, [indexRefreshLog])
+
   const runSourceSummaryAudit = async () => {
     const controller = new AbortController()
     auditAbortRef.current = controller
@@ -588,6 +604,154 @@ export const MemexQueueManager = ({
       cleanupAbortRef.current = null
       setCleanupRunning(false)
       setCleanupMode('')
+    }
+  }
+
+  const runIndexRefresh = async (
+    action: 'preview' | 'apply'
+  ) => {
+    if (indexRefreshRunning) return
+
+    if (action === 'apply') {
+      if (!indexRefreshPreviewHash) {
+        setError('Run Preview refresh before Apply refresh.')
+        return
+      }
+
+      if (indexRefreshConfirmation !== 'APPLY') {
+        setError('Type APPLY to confirm Memex Index refresh.')
+        return
+      }
+    }
+
+    const controller = new AbortController()
+    indexRefreshAbortRef.current = controller
+    setIndexRefreshRunning(true)
+    setIndexRefreshMode(action)
+    setIndexRefreshLog('')
+    setBusy(true)
+    setError('')
+    setStatus(
+      action === 'preview'
+        ? 'Building read-only Memex Index refresh preview…'
+        : 'Applying deterministic Memex Index refresh…'
+    )
+
+    let fullLog = ''
+
+    try {
+      const response = await fetch('/memex-index-refresh', {
+        method: 'POST',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action,
+          previewHash:
+            action === 'apply' ? indexRefreshPreviewHash : undefined,
+          confirmation:
+            action === 'apply' ? indexRefreshConfirmation : undefined
+        })
+      })
+
+      if (!response.ok || !response.body) {
+        const detail = await response.text()
+        throw new Error(detail || `Memex Index refresh HTTP ${response.status}`)
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value) continue
+
+        const chunk = decoder.decode(value, { stream: true })
+        fullLog += chunk
+        setIndexRefreshLog((current) => current + chunk)
+      }
+
+      const tail = decoder.decode()
+      if (tail) {
+        fullLog += tail
+        setIndexRefreshLog((current) => current + tail)
+      }
+
+      if (/^FATAL:/m.test(fullLog)) {
+        const fatal =
+          fullLog.match(/^FATAL:\s*(.+)$/m)?.[1] ??
+          'Memex Index refresh failed.'
+        setError(fatal)
+        setStatus('Memex Index refresh failed.')
+        return
+      }
+
+      const resultCount = Number(
+        fullLog.match(/^RESULT_SOURCE_COUNT:\s*(\d+)$/m)?.[1] ??
+        fullLog.match(/^VERIFY_SOURCE_COUNT:\s*(\d+)$/m)?.[1] ??
+        '0'
+      )
+      const trailCount = Number(
+        fullLog.match(/^TRAIL_COUNT:\s*(\d+)$/m)?.[1] ??
+        fullLog.match(/^VERIFY_TRAIL_COUNT:\s*(\d+)$/m)?.[1] ??
+        '0'
+      )
+
+      if (action === 'preview') {
+        const previewHash =
+          fullLog.match(/^PREVIEW_HASH:\s*([0-9a-f]{64})$/m)?.[1] ?? ''
+        const missingCount = Number(
+          fullLog.match(/^MISSING_SOURCE_COUNT:\s*(\d+)$/m)?.[1] ?? '0'
+        )
+
+        setIndexRefreshPreviewHash(previewHash)
+        setIndexRefreshMissingCount(missingCount)
+        setIndexRefreshResultCount(resultCount)
+        setIndexRefreshTrailCount(trailCount)
+        setIndexRefreshConfirmation('')
+        setStatus(
+          `Memex Index preview complete: ${missingCount} missing sources; ` +
+          `${resultCount} sources / ${trailCount} trails after apply.`
+        )
+      } else if (/^APPLY COMPLETE/m.test(fullLog)) {
+        setIndexRefreshPreviewHash('')
+        setIndexRefreshMissingCount(0)
+        setIndexRefreshResultCount(resultCount)
+        setIndexRefreshTrailCount(trailCount)
+        setIndexRefreshConfirmation('')
+        setStatus(
+          `Memex Index refresh complete: ${resultCount} sources / ` +
+          `${trailCount} trails.`
+        )
+      }
+    } catch (error) {
+      if (controller.signal.aborted && action === 'preview') {
+        setIndexRefreshLog(
+          (current) =>
+            current +
+            (current.endsWith('\n') || !current ? '' : '\n') +
+            'PREVIEW STOPPED BY USER\n'
+        )
+        setStatus('Memex Index refresh preview stopped.')
+      } else {
+        const message =
+          error instanceof Error ? error.message : String(error)
+        setIndexRefreshLog(
+          (current) =>
+            current +
+            (current.endsWith('\n') || !current ? '' : '\n') +
+            `CLIENT ERROR: ${message}\n`
+        )
+        setError(message)
+      }
+    } finally {
+      indexRefreshAbortRef.current = null
+      setIndexRefreshRunning(false)
+      setIndexRefreshMode('')
+      setBusy(false)
     }
   }
 
@@ -1405,6 +1569,7 @@ export const MemexQueueManager = ({
             style={{ ...buttonStyle, fontWeight: 600 }}
             disabled={
               auditRunning ||
+              indexRefreshRunning ||
               processRunning ||
               doclingBatch.running ||
               doclingIngest.running
@@ -1478,6 +1643,7 @@ export const MemexQueueManager = ({
             disabled={
               cleanupRunning ||
               auditRunning ||
+              indexRefreshRunning ||
               processRunning ||
               doclingBatch.running ||
               doclingIngest.running
@@ -1497,6 +1663,7 @@ export const MemexQueueManager = ({
               !cleanupPreviewHash ||
               cleanupConfirmation !== 'APPLY' ||
               auditRunning ||
+              indexRefreshRunning ||
               processRunning ||
               doclingBatch.running ||
               doclingIngest.running
@@ -1586,6 +1753,149 @@ export const MemexQueueManager = ({
           }}
         >
           {cleanupLog || 'No cleanup preview has been run yet.'}
+        </pre>
+      </section>
+
+      <section style={panelStyle}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            alignItems: 'center'
+          }}
+        >
+          <h2 style={{ margin: '0 auto 0 0' }}>
+            Memex Index refresh
+          </h2>
+
+          <button
+            type='button'
+            style={{ ...buttonStyle, fontWeight: 600 }}
+            disabled={
+              busy ||
+              indexRefreshRunning ||
+              cleanupRunning ||
+              auditRunning ||
+              processRunning ||
+              doclingBatch.running ||
+              doclingIngest.running
+            }
+            onClick={() => void runIndexRefresh('preview')}
+          >
+            {indexRefreshRunning && indexRefreshMode === 'preview'
+              ? 'Previewing…'
+              : 'Preview refresh'}
+          </button>
+
+          <button
+            type='button'
+            style={dangerButtonStyle}
+            disabled={
+              busy ||
+              indexRefreshRunning ||
+              !indexRefreshPreviewHash ||
+              indexRefreshConfirmation !== 'APPLY' ||
+              cleanupRunning ||
+              auditRunning ||
+              processRunning ||
+              doclingBatch.running ||
+              doclingIngest.running
+            }
+            onClick={() => void runIndexRefresh('apply')}
+          >
+            {indexRefreshRunning && indexRefreshMode === 'apply'
+              ? 'Applying…'
+              : 'Apply refresh'}
+          </button>
+
+          <button
+            type='button'
+            style={buttonStyle}
+            disabled={!indexRefreshRunning || indexRefreshMode !== 'preview'}
+            onClick={() => indexRefreshAbortRef.current?.abort()}
+          >
+            Stop preview
+          </button>
+
+          <Link href='/memex-index'>Open Memex Index</Link>
+        </div>
+
+        <p>
+          Deterministic source reconciliation only; no LLM. Preview compares
+          the live Memex Wiki source-summary catalogue with
+          <code> memex/index.md</code>. Apply snapshots the current index,
+          adds missing raw source aliases, preserves existing extra sources,
+          preserves the entire Trails section byte-for-byte, updates the
+          HedgeDoc <code>memex-index</code> mirror, and verifies counts.
+        </p>
+
+        <div
+          style={{
+            alignItems: 'center',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '8px',
+            marginBottom: '10px'
+          }}
+        >
+          <label htmlFor='memex-index-refresh-confirmation'>
+            Confirmation
+          </label>
+          <input
+            id='memex-index-refresh-confirmation'
+            type='text'
+            value={indexRefreshConfirmation}
+            disabled={indexRefreshRunning || !indexRefreshPreviewHash}
+            placeholder='Type APPLY'
+            onChange={(event) =>
+              setIndexRefreshConfirmation(event.target.value)
+            }
+            style={{
+              minWidth: '180px',
+              padding: '6px 8px'
+            }}
+          />
+          <span style={{ opacity: 0.75 }}>
+            {indexRefreshPreviewHash
+              ? `${indexRefreshMissingCount} missing → ` +
+                `${indexRefreshResultCount} sources / ` +
+                `${indexRefreshTrailCount} trails`
+              : indexRefreshResultCount > 0
+                ? `Last verified: ${indexRefreshResultCount} sources / ` +
+                  `${indexRefreshTrailCount} trails`
+                : 'Preview required before apply'}
+          </span>
+        </div>
+
+        <div style={{ marginBottom: '8px' }}>
+          <strong>Index refresh terminal</strong>
+          <span style={{ marginLeft: '8px', opacity: 0.7 }}>
+            {indexRefreshRunning ? indexRefreshMode : 'idle'}
+          </span>
+        </div>
+
+        <pre
+          ref={indexRefreshTerminalRef}
+          aria-live='polite'
+          style={{
+            background: '#111',
+            borderRadius: '6px',
+            color: '#eee',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            fontSize: '12px',
+            lineHeight: 1.45,
+            margin: 0,
+            maxHeight: '520px',
+            minHeight: '180px',
+            overflow: 'auto',
+            padding: '12px',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word'
+          }}
+        >
+          {indexRefreshLog || 'No Memex Index refresh preview has been run yet.'}
         </pre>
       </section>
 

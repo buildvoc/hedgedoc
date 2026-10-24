@@ -21,17 +21,18 @@ interface QueueManagerModelSettings {
   defaultModel?: string
 }
 
-const sourcePattern =
-  /^- \[([^\]]+)\]\([^)]*\/(?:n|p|s)\/([^?#)]+)[^)]*\)(?: — (.*))?$/gm
+const sourceLinePattern =
+  /^- \[(.*)\]\([^)]*\/(?:n|p|s)\/([^?#)]+)[^)]*\)(?: — (.*))?$/
 
 const parseSources = (content: string): QueueManagerSource[] => {
   const section = content.split('## Sources', 2)[1]?.split('## Trails', 1)[0] ?? ''
   const result: QueueManagerSource[] = []
   const seen = new Set<string>()
-  sourcePattern.lastIndex = 0
 
-  let match: RegExpExecArray | null
-  while ((match = sourcePattern.exec(section)) !== null) {
+  for (const line of section.split(/\r?\n/)) {
+    const match = line.match(sourceLinePattern)
+    if (!match) continue
+
     const alias = decodeURIComponent(match[2])
     if (!alias || seen.has(alias)) continue
     seen.add(alias)
