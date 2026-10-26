@@ -43,7 +43,7 @@ TRAIL_SHORTLIST_RECENT = max(
     0, int(os.environ.get("MEMEX_TRAIL_SHORTLIST_RECENT", "4"))
 )
 TRAIL_SHORTLIST_CONTEXT_CHARS = max(
-    3000, int(os.environ.get("MEMEX_TRAIL_SHORTLIST_CONTEXT_CHARS", "9000"))
+    1800, int(os.environ.get("MEMEX_TRAIL_SHORTLIST_CONTEXT_CHARS", "4200"))
 )
 TRAIL_CACHE_ANCHOR_CHARS = max(
     12000, int(os.environ.get("MEMEX_TRAIL_CACHE_ANCHOR_CHARS", "32000"))
@@ -460,6 +460,34 @@ def compact_trail_context(trails, sources, budget):
     )
 
 
+def compact_review_trail_context(trails, budget):
+    """Render only the live data the model needs to choose a candidate trail."""
+    if not trails:
+        return "No candidate trails exist yet."
+
+    # Membership/source-ID detail is used application-side by shortlist scoring.
+    # Keeping it out of the LLM suffix reduces uncached prompt evaluation without
+    # changing the stable cache anchor or truncating source content.
+    reason_limits = [180, 140, 100, 70, 40, 0]
+    for reason_limit in reason_limits:
+        lines = []
+        for trail in trails:
+            name = compact_whitespace(trail.get("name"))[:100]
+            reason = compact_whitespace(trail.get("reason"))[:reason_limit]
+            line = f'T{trail["id"]}\t{name}'
+            if reason:
+                line += f'\t{reason}'
+            lines.append(line)
+        text = "\n".join(lines)
+        if len(text) <= budget:
+            return text
+
+    raise RuntimeError(
+        f"Candidate review context exceeds {budget} characters; "
+        "reduce shortlist size before continuing"
+    )
+
+
 def trail_terms(value):
     words = set()
     for raw in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{2,}", str(value or "").casefold()):
@@ -802,35 +830,24 @@ def review_one_source_with_trails(
         "trail candidates. Return JSON only. Trail IDs are numeric identifiers "
         "provided by the application; never invent or rewrite source aliases."
     )
-    base_prompt = source_review_prompt(
+    prompt = source_review_prompt(
         source_id, source, source_content, trail_context, cache_anchor, total
     )
-    previous = ""
-    last_error = ""
 
-    for attempt in range(1, 3):
-        prompt = base_prompt
-        if attempt > 1:
-            prompt += f"""
-
-Your previous JSON failed validation:
-{last_error}
-
-Return a COMPLETE corrected JSON object only.
-Previous response:
-{previous[:12000]}
-"""
-        raw = llm_chat(settings, prompt, system_prompt)
-        previous = raw
-        try:
-            return parse_source_decision(raw, trails)
-        except (ValueError, json.JSONDecodeError) as exc:
-            last_error = str(exc)
-            out(f"source {source_id} validation attempt {attempt} failed: {last_error}")
-
-    raise RuntimeError(
-        f"source {source_id} review failed validation after repair: {last_error}"
-    )
+    # Exactly one LLM call per source. parse_source_decision() already performs
+    # deterministic local repair. A second corrective prompt on slot 0 would
+    # replace the resident common prefix with a one-off repair prompt.
+    raw = llm_chat(settings, prompt, system_prompt)
+    try:
+        return parse_source_decision(raw, trails)
+    except (ValueError, json.JSONDecodeError) as exc:
+        out(
+            f"source {source_id} validation failed; "
+            f"deferred without slot-0 repair call: {exc}"
+        )
+        raise RuntimeError(
+            f"source {source_id} review invalid; deferred to preserve slot-0 KV: {exc}"
+        ) from exc
 
 
 def add_source_to_trail(trail, source_id, max_members=32):
@@ -1120,8 +1137,8 @@ def sequential_plan(index_markdown, sources, settings):
             candidate_trails = shortlist_candidate_trails(
                 state, source_id, source, content, sources
             )
-            trail_context = compact_trail_context(
-                candidate_trails, sources, TRAIL_SHORTLIST_CONTEXT_CHARS
+            trail_context = compact_review_trail_context(
+                candidate_trails, TRAIL_SHORTLIST_CONTEXT_CHARS
             )
             overhead = 6500 + len(cache_anchor) + len(trail_context)
             content_budget = max(
@@ -1167,6 +1184,8 @@ def sequential_plan(index_markdown, sources, settings):
                 f"REVIEW {source_id}/{total} "
                 f"trails={len(state['trails'])} candidates={len(candidate_trails)} "
                 f"memberships={memberships} "
+                f"trail_ctx_chars={len(trail_context)} "
+                f"prompt_source_chars={len(fitted_content)} "
                 f"content_chars={len(content)}{' truncated' if truncated else ''}"
             )
 
