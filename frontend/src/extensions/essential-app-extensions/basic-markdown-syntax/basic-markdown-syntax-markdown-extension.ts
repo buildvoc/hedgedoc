@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 import { MarkdownRendererExtension } from '../../../components/markdown-renderer/extensions/_base-classes/markdown-renderer-extension'
+import { criticMarkup } from './critic-markup-markdown-it-plugin'
 import { imageSize } from '@hedgedoc/markdown-it-plugins'
 import type MarkdownIt from 'markdown-it'
 import abbreviation from 'markdown-it-abbr'
@@ -19,6 +20,7 @@ import superscript from 'markdown-it-sup'
  */
 export class BasicMarkdownSyntaxMarkdownExtension extends MarkdownRendererExtension {
   public configureMarkdownIt(markdownIt: MarkdownIt): void {
+    criticMarkup(markdownIt)
     abbreviation(markdownIt)
     definitionList(markdownIt)
     subscript(markdownIt)

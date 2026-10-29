@@ -1,0 +1,9 @@
+'use client'
+import { ORIGIN, useBaseUrl } from '../../../hooks/common/use-base-url'
+import { useMayEdit } from '../../../hooks/common/use-may-edit'
+import { useCodemirrorReferenceContext } from '../change-content-context/codemirror-reference-context'
+import React, { useEffect, useMemo } from 'react'
+interface M {type:'specdoc-critic-action';action:'reply'|'resolve';raw:string;ordinal?:number;text?:string}
+const clean=(t:string)=>t.replaceAll('<<}','<< }').replaceAll('{>>','{ >>')
+const nth=(s:string,n:string,o:number)=>{let f=0;for(let i=0;i<=o;i++){const p=s.indexOf(n,f);if(p<0)return -1;if(i===o)return p;f=p+Math.max(1,n.length)}return -1}
+export const CriticReviewBridge:React.FC=()=>{const [view]=useCodemirrorReferenceContext(),mayEdit=useMayEdit(),renderer=useBaseUrl(ORIGIN.RENDERER),origin=useMemo(()=>new URL(renderer).origin,[renderer]);useEffect(()=>{const onMessage=(e:MessageEvent<M>)=>{if(!mayEdit||!view)return;if(e.origin!==origin&&e.origin!==window.location.origin)return;const m=e.data;if(!m||m.type!=='specdoc-critic-action'||!['reply','resolve'].includes(m.action))return;const raw=String(m.raw||'');if(!raw.startsWith('{>>')||!raw.endsWith('<<}'))return;const content=view.state.doc.toString(),o=Math.max(0,Number(m.ordinal)||0),start=nth(content,raw,o);if(start<0){window.alert('Review comment changed. Reload and try again.');return}const end=start+raw.length;let replacement=raw;if(m.action==='reply'){const t=clean(String(m.text||'').trim());if(!t)return;replacement=raw+`{>>${t}<<}`}else{const resolved='{>>%%resolved%%<<}';if(content.slice(end,end+resolved.length)===resolved)return;replacement=raw+resolved}view.dispatch({changes:{from:start,to:end,insert:replacement},selection:{anchor:start+replacement.length}})};window.addEventListener('message',onMessage);return()=>window.removeEventListener('message',onMessage)},[mayEdit,origin,view]);return null}

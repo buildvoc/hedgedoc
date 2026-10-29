@@ -10,6 +10,7 @@ import { CheckListButton } from './buttons/check-list-button'
 import { CodeFenceButton } from './buttons/code-fence-button'
 import { CollapsibleBlockButton } from './buttons/collapsible-block-button'
 import { CommentButton } from './buttons/comment-button'
+import { CriticMarkupButtons } from './buttons/critic-markup-buttons'
 import { HeaderLevelButton } from './buttons/header-level-button'
 import { HighlightButton } from './buttons/highlight-button'
 import { HorizontalLineButton } from './buttons/horizontal-line-button'
@@ -64,6 +65,9 @@ export const ToolBar: React.FC = () => {
         <LinkButton />
         <ImageLinkButton />
         <UploadImageButton />
+      </ButtonGroup>
+      <ButtonGroup className={'mx-1 flex-wrap'}>
+        <CriticMarkupButtons />
       </ButtonGroup>
       <ButtonGroup className={'mx-1 flex-wrap'}>
         <TablePickerButton />
