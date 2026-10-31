@@ -27,6 +27,39 @@ interface WikiIndexEntry {
   description: string
 }
 
+// Short-lived, single-flight read cache shared by Wiki Query and Conversation.
+// POST always reads HedgeDoc directly and invalidates this cache on any write.
+const WIKI_READ_CACHE_TTL_MS = Math.max(
+  1000,
+  Math.min(60000, Number(process.env.MEMEX_WIKI_READ_CACHE_TTL_MS ?? '30000') || 30000),
+)
+const WIKI_READ_CACHE_STALE_429_MS = Math.max(
+  WIKI_READ_CACHE_TTL_MS,
+  Math.min(180000, Number(process.env.MEMEX_WIKI_READ_CACHE_STALE_429_MS ?? '90000') || 90000),
+)
+const WIKI_READ_PAGE_CACHE_MAX = 64
+
+type TimedValue<T> = { value: T; storedAt: number }
+type WikiCatalogueSnapshot = { pages: WikiIndexEntry[] }
+
+let wikiCacheGeneration = 0
+let wikiCatalogueCache: TimedValue<WikiCatalogueSnapshot> | null = null
+let wikiCataloguePending: Promise<WikiCatalogueSnapshot> | null = null
+const wikiPageCache = new Map<string, TimedValue<string>>()
+const wikiPagePending = new Map<string, Promise<string>>()
+
+const isRateLimited = (error: unknown): boolean =>
+  error instanceof Error && /failed \(429\)/.test(error.message)
+
+const invalidateWikiReadCache = (): void => {
+  wikiCacheGeneration += 1
+  wikiCatalogueCache = null
+  wikiCataloguePending = null
+  wikiPageCache.clear()
+  wikiPagePending.clear()
+}
+
+
 interface WikiPageMutation {
   alias?: unknown
   pageType?: unknown
@@ -203,19 +236,31 @@ const fetchNote = async (
   token: string,
   allowMissing = false,
 ): Promise<string | null> => {
-  const response = await fetch(
-    `${HEDGEDOC_NOTES_API}/${encodeURIComponent(alias)}/content`,
-    {
-      cache: 'no-store',
-      headers: apiHeaders(token),
-    },
-  )
-
-  if (allowMissing && response.status === 404) return null
-  if (!response.ok) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch(
+      `${HEDGEDOC_NOTES_API}/${encodeURIComponent(alias)}/content`,
+      {
+        cache: 'no-store',
+        headers: apiHeaders(token),
+      },
+    )
+    if (allowMissing && response.status === 404) return null
+    if (response.ok) return response.text()
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after')
+      const seconds = retryAfter === null ? NaN : Number(retryAfter)
+      if (attempt === 0 && Number.isFinite(seconds) && seconds >= 0 && seconds <= 2) {
+        await new Promise<void>((resolve) => setTimeout(resolve, seconds * 1000 + 250))
+        continue
+      }
+      throw new Error(
+        `HedgeDoc GET ${alias} failed (429)` +
+        (retryAfter ? `; Retry-After: ${retryAfter}` : ''),
+      )
+    }
     throw new Error(`HedgeDoc GET ${alias} failed (${response.status})`)
   }
-  return response.text()
+  throw new Error(`HedgeDoc GET ${alias} failed (429)`)
 }
 
 const putNote = async (
@@ -375,11 +420,100 @@ const assertDerivedWikiPage = (markdown: string, alias: string): void => {
   }
 }
 
+// The index and page caches reduce redundant GETs; all source writes still
+// use original uncached fetchNote + optimistic concurrency checks.
+const readWikiCatalogueCached = async (token: string): Promise<WikiCatalogueSnapshot> => {
+  const now = Date.now()
+  const prior = wikiCatalogueCache
+  if (prior && now - prior.storedAt < WIKI_READ_CACHE_TTL_MS) return prior.value
+  if (wikiCataloguePending) {
+    try {
+      return await wikiCataloguePending
+    } catch (error) {
+      if (isRateLimited(error) && prior &&
+          Date.now() - prior.storedAt < WIKI_READ_CACHE_STALE_429_MS) {
+        return prior.value
+      }
+      throw error
+    }
+  }
+
+  const generation = wikiCacheGeneration
+  const pending = (async (): Promise<WikiCatalogueSnapshot> => {
+    const index = await fetchNote(WIKI_INDEX_ALIAS, token, true)
+    const snapshot: WikiCatalogueSnapshot = { pages: parseWikiIndex(index) }
+    if (generation === wikiCacheGeneration) {
+      wikiCatalogueCache = { value: snapshot, storedAt: Date.now() }
+    }
+    return snapshot
+  })()
+  wikiCataloguePending = pending
+  try {
+    return await pending
+  } catch (error) {
+    // Under an active 429 window, a recently fetched catalogue is safer than
+    // repeatedly hammering HedgeDoc. Never use a stale cache for mutations.
+    if (isRateLimited(error) && prior &&
+        Date.now() - prior.storedAt < WIKI_READ_CACHE_STALE_429_MS) {
+      return prior.value
+    }
+    throw error
+  } finally {
+    if (wikiCataloguePending === pending) wikiCataloguePending = null
+  }
+}
+
+const readWikiPageCached = async (alias: string, token: string): Promise<string> => {
+  const now = Date.now()
+  const prior = wikiPageCache.get(alias)
+  if (prior && now - prior.storedAt < WIKI_READ_CACHE_TTL_MS) return prior.value
+  const existing = wikiPagePending.get(alias)
+  if (existing) {
+    try {
+      return await existing
+    } catch (error) {
+      if (isRateLimited(error) && prior &&
+          Date.now() - prior.storedAt < WIKI_READ_CACHE_STALE_429_MS) {
+        return prior.value
+      }
+      throw error
+    }
+  }
+
+  const generation = wikiCacheGeneration
+  const pending = (async (): Promise<string> => {
+    const markdown = await fetchNote(alias, token)
+    if (markdown === null) throw new Error(`Derived wiki page ${alias} is missing`)
+    assertDerivedWikiPage(markdown, alias)
+    if (generation === wikiCacheGeneration) {
+      wikiPageCache.delete(alias)
+      wikiPageCache.set(alias, { value: markdown, storedAt: Date.now() })
+      while (wikiPageCache.size > WIKI_READ_PAGE_CACHE_MAX) {
+        const oldest = wikiPageCache.keys().next().value
+        if (oldest === undefined) break
+        wikiPageCache.delete(oldest)
+      }
+    }
+    return markdown
+  })()
+  wikiPagePending.set(alias, pending)
+  try {
+    return await pending
+  } catch (error) {
+    if (isRateLimited(error) && prior &&
+        Date.now() - prior.storedAt < WIKI_READ_CACHE_STALE_429_MS) {
+      return prior.value
+    }
+    throw error
+  } finally {
+    if (wikiPagePending.get(alias) === pending) wikiPagePending.delete(alias)
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const token = await readMemexApiToken()
-    const index = await fetchNote(WIKI_INDEX_ALIAS, token, true)
-    const pages = parseWikiIndex(index)
+    const { pages } = await readWikiCatalogueCached(token)
     const requestedAlias = normalizeAlias(request.nextUrl.searchParams.get('alias'))
 
     if (request.nextUrl.searchParams.has('alias')) {
@@ -392,9 +526,7 @@ export async function GET(request: NextRequest) {
           { status: 404 },
         )
       }
-      const markdown = await fetchNote(requestedAlias, token)
-      if (markdown === null) throw new Error(`Derived wiki page ${requestedAlias} is missing`)
-      assertDerivedWikiPage(markdown, requestedAlias)
+      const markdown = await readWikiPageCached(requestedAlias, token)
       return NextResponse.json(
         { alias: requestedAlias, markdown },
         { headers: { 'Cache-Control': 'no-store' } },
@@ -428,6 +560,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'A mutation may change at most 12 wiki pages' }, { status: 400 })
     }
 
+    invalidateWikiReadCache()
     const token = await readMemexApiToken()
     const currentIndex = await fetchNote(WIKI_INDEX_ALIAS, token, true)
     const registry = parseWikiIndex(currentIndex)
@@ -589,6 +722,7 @@ export async function POST(request: NextRequest) {
       indexExpectedHash,
     )
 
+    invalidateWikiReadCache()
     return NextResponse.json({
       committed: true,
       provenance,
@@ -598,6 +732,7 @@ export async function POST(request: NextRequest) {
       pages: committed,
     })
   } catch (error) {
+    invalidateWikiReadCache()
     const message = error instanceof Error ? error.message : 'Memex wiki mutation failed'
     const status = message.startsWith('Stale preview:') ? 409 : 500
     return NextResponse.json({ error: message }, { status })
