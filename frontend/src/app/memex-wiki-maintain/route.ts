@@ -222,6 +222,7 @@ const putNote = async (
   alias: string,
   markdown: string,
   token: string,
+  expectedHash: string,
 ): Promise<void> => {
   const response = await fetch(
     `${HEDGEDOC_NOTES_API}/${encodeURIComponent(alias)}`,
@@ -231,11 +232,15 @@ const putNote = async (
       headers: {
         ...apiHeaders(token),
         'Content-Type': 'text/markdown',
+        'X-Expected-Content-Sha256': expectedHash,
       },
       body: markdown,
     },
   )
 
+  if (response.status === 412) {
+    throw new Error(`Stale preview: ${alias} changed during commit`)
+  }
   if (!response.ok) {
     const detail = await response.text()
     throw new Error(
@@ -470,6 +475,14 @@ export async function POST(request: NextRequest) {
         page.benchmarkGoldGeneratorModel,
         pageType,
       )
+      const expectedCurrentHash = normalizeExpectedHash(page.expectedCurrentHash)
+      if (page.expectMissing !== undefined && typeof page.expectMissing !== 'boolean') {
+        throw new Error('expectMissing must be a boolean')
+      }
+      const expectMissing = page.expectMissing === true
+      if (expectedCurrentHash && expectMissing) {
+        throw new Error('expectedCurrentHash and expectMissing are mutually exclusive')
+      }
       const normalizedBody = normalizeBody(page.body, title)
       const markdown = buildDerivedPage(
         pageType,
@@ -494,6 +507,8 @@ export async function POST(request: NextRequest) {
         sourcePages,
         sourceAnchor,
         markdown,
+        expectedCurrentHash,
+        expectMissing,
       }
     })
 
@@ -506,26 +521,44 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const updatedAt = requestTimestamp
-    const committed: Array<WikiIndexEntry & { created: boolean }> = []
-
-    if (currentIndex === null) {
-      await createNamedNote(
-        WIKI_INDEX_ALIAS,
-        buildWikiIndex(registry, updatedAt),
-        token,
-      )
+    // Validate the whole batch before writing; atomic conditional PUT closes
+    // the race between this snapshot and each individual note update.
+    const seenAliases = new Set<string>()
+    const planned = [] as Array<{ page: (typeof normalized)[number]; existingHash: string | null }>
+    for (const page of normalized) {
+      if (seenAliases.has(page.alias)) throw new Error(`Duplicate wiki mutation: ${page.alias}`)
+      seenAliases.add(page.alias)
+      const existing = await fetchNote(page.alias, token, true)
+      if (page.expectMissing && existing !== null) {
+        throw new Error(`Stale preview: expected ${page.alias} to be missing`)
+      }
+      if (page.expectedCurrentHash &&
+        (existing === null || markdownHash(existing) !== page.expectedCurrentHash)) {
+        throw new Error(`Stale preview: ${page.alias} changed since preview`)
+      }
+      if (existing !== null) assertDerivedWikiPage(existing, page.alias)
+      planned.push({ page, existingHash: existing === null ? null : markdownHash(existing) })
+    }
+    if ((await fetchNote(WIKI_INDEX_ALIAS, token, true)) !== currentIndex) {
+      throw new Error('Stale preview: wiki index changed before commit')
     }
 
-    for (const page of normalized) {
+    const updatedAt = requestTimestamp
+    const committed: Array<WikiIndexEntry & { created: boolean }> = []
+    let indexExpectedHash = currentIndex === null ? '' : markdownHash(currentIndex)
+    if (currentIndex === null) {
+      const initialIndex = buildWikiIndex(registry, updatedAt)
+      await createNamedNote(WIKI_INDEX_ALIAS, initialIndex, token)
+      indexExpectedHash = markdownHash(initialIndex)
+    }
+
+    for (const { page, existingHash } of planned) {
       const alias = page.alias
       let created = false
-      const existing = await fetchNote(alias, token, true)
-
-      if (existing !== null) {
-        assertDerivedWikiPage(existing, alias)
-        await putNote(alias, page.markdown, token)
+      if (existingHash !== null) {
+        await putNote(alias, page.markdown, token, existingHash)
       } else {
+        // Creating an alias is protected by HedgeDoc's unique-alias constraint.
         await createNamedNote(alias, page.markdown, token)
         created = true
       }
@@ -553,6 +586,7 @@ export async function POST(request: NextRequest) {
       WIKI_INDEX_ALIAS,
       buildWikiIndex([...byAlias.values()], updatedAt),
       token,
+      indexExpectedHash,
     )
 
     return NextResponse.json({
