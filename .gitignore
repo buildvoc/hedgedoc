@@ -63,3 +63,6 @@ frontend/dist.prev-*
 frontend/dist.pre-*
 frontend/dist.before-*
 frontend/.next-before-*
+
+# Generated Functions and Effects documentation
+*Functions_and_Effects*.md
