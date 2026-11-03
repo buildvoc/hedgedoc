@@ -15,6 +15,7 @@ being processed now. The complete queue is restored after every child
 invocation and the result for the current row is merged back into full history.
 """
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -35,6 +36,88 @@ REBUILD_REASON = "orphan-repair"
 SELECTED_ALIASES_ENV = "MEMEX_PROCESS_BATCH_ALIASES"
 SCOPED_BATCH_MAX = 4
 
+# Stable source-summary baseline used only for the LLM frozen prompt prefix.
+# Canonical index mutation still uses the complete live memex/index.md.
+COMPACT_BASELINE_ALIASES = (
+    "qchr2r7tvan3qeb6xyj5g72y2r",
+    "awdwzyd057wcahgy6fkmpz2rxm",
+    "hb08aedkxkxvacd6gj3htq25d4",
+    "bzccgdx9t11kh7mrxn0p3755vr",
+    "gpkwerhm7kj2q0wh6sfg7z55zm",
+    "jmmcc1x6x5vx3hw8nvx1gsy3h4",
+    "ben80kadeqwjhcedavvdywsrbm",
+    "2k50vn339nvcprdwphqgcpmcq4",
+    "m5x0s5a9hpvh37wbc8cp1r7jbr",
+    "tw5kh2czh5ygxe2dq8dp1ckbcc",
+    "28ckhpq5qhx460n66x1eb32pw0",
+    "w596p12495z7qj9w00d391s52g",
+)
+
+
+def compact_batch_prompt_index(index_text: str) -> tuple[str, int, int]:
+    # Keep 12 stable source summaries plus every maintained trail, compactly.
+    if "## Sources" not in index_text or "## Trails" not in index_text:
+        return index_text, 0, 0
+
+    source_section = index_text.split("## Sources", 1)[1].split("## Trails", 1)[0]
+    trail_section = index_text.split("## Trails", 1)[1]
+
+    selected_sources: list[str] = []
+    selected = set(COMPACT_BASELINE_ALIASES)
+
+    for raw in source_section.splitlines():
+        line = raw.strip()
+        if not line.startswith("- [") or "](" not in line or ") — " not in line:
+            continue
+
+        match = re.search(r"^- \[(.*?)\]\([^)]*/n/([^?#)]+)[^)]*\) — (.*)$", line)
+        if not match:
+            continue
+
+        title, alias, summary = match.groups()
+        if alias in selected:
+            selected_sources.append(f"- {title} :: {alias} — {summary}")
+
+    out = [
+        "# Memex Compact Batch Baseline",
+        "",
+        "Stable source-summary baseline for prompt/KV reuse.",
+        "The canonical live Memex index remains authoritative.",
+        "All maintained trails are retained below; trail member aliases are",
+        "existing-state identifiers only. Return numeric DOCUMENT IDs only.",
+        "",
+        "## Baseline Sources",
+        "",
+        *selected_sources,
+        "",
+        "## Trails",
+        "",
+    ]
+
+    trail_count = 0
+    for raw in trail_section.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+
+        if line.startswith("### "):
+            trail_count += 1
+            out.append(line)
+            continue
+
+        if stripped.startswith("- [") and "](" in stripped and "/n/" in stripped:
+            match = re.search(r"^- \[(.*?)\]\([^)]*/n/([^?#)]+)[^)]*\)\s*$", stripped)
+            if match:
+                title, alias = match.groups()
+                out.append(f"- {title} :: {alias}")
+                continue
+
+        if stripped:
+            out.append(stripped)
+        elif out and out[-1] != "":
+            out.append("")
+
+    compact = "\n".join(out).rstrip() + "\n"
+    return compact, len(selected_sources), trail_count
 
 
 def selected_aliases_from_env() -> list[str] | None:
@@ -358,8 +441,16 @@ def merge_scoped_result(full_rows: list[dict[str, Any]], scoped_rows: list[dict[
     return result
 
 
-def run_child() -> subprocess.CompletedProcess[Any]:
-    return subprocess.run([sys.executable, str(PROCESSOR)], cwd=str(PROJECT_ROOT), env=os.environ.copy(), check=False)
+def run_child(extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[Any]:
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(
+        [sys.executable, str(PROCESSOR)],
+        cwd=str(PROJECT_ROOT),
+        env=env,
+        check=False,
+    )
 
 
 def run_rebuild_batch(allowed_aliases: set[str] | None = None) -> int:
@@ -519,33 +610,87 @@ def run_rebuild_batch(allowed_aliases: set[str] | None = None) -> int:
 
 def run_normal_batch() -> int:
     processed_steps = 0
-    for iteration in range(1, MAX_ITERATIONS + 1):
-        before_rows = read_rows()
-        before = pending_ids(before_rows)
-        if not before:
-            print(f"MEMEX batch complete: steps={processed_steps} pending=0", flush=True)
-            return 0
-        current = next(
-            (row for row in reversed(before_rows) if row.get("status") == "pending"),
-            None,
+
+    if INDEX.exists():
+        full_frozen_text = INDEX.read_text(encoding="utf-8")
+    else:
+        full_frozen_text = "# Memex Index\n\nNo indexed sources yet."
+
+    compact_enabled = os.environ.get(
+        "MEMEX_BATCH_COMPACT_BASELINE",
+        "1",
+    ).strip().lower() not in {"0", "false", "no", "off"}
+
+    if compact_enabled:
+        prompt_frozen_text, baseline_sources, baseline_trails = (
+            compact_batch_prompt_index(full_frozen_text)
         )
-        current_alias = (
-            str(current.get("alias") or "<unknown>")
-            if current
-            else "<unknown>"
-        )
-        print(f"MEMEX batch [{iteration}]: pending={len(before)} next={current_alias}", flush=True)
-        child = run_child()
-        after = pending_ids()
-        if after == before:
-            print("ERROR: process_queue_once.py made no queue progress; " f"exit={child.returncode} pending={len(after)} next={current_alias}", flush=True)
-            return child.returncode if child.returncode not in (0, None) else 1
-        processed_steps += 1
-        if child.returncode != 0:
-            print("MEMEX batch: child returned non-zero but queue advanced; " f"continuing (exit={child.returncode}, remaining={len(after)})", flush=True)
-    remaining = pending_ids()
-    print(f"ERROR: MEMEX batch iteration limit reached: limit={MAX_ITERATIONS} remaining={len(remaining)}", flush=True)
-    return 3
+    else:
+        prompt_frozen_text = full_frozen_text
+        baseline_sources = 0
+        baseline_trails = 0
+
+    frozen_dir = Path(os.environ.get("MEMEX_BATCH_FROZEN_DIR", "/tmp"))
+    frozen_dir.mkdir(parents=True, exist_ok=True)
+    frozen_path = frozen_dir / f"memex-batch-frozen-index-{os.getpid()}.md"
+    delta_base_path = frozen_dir / f"memex-batch-delta-base-{os.getpid()}.md"
+
+    frozen_path.write_text(prompt_frozen_text, encoding="utf-8")
+    delta_base_path.write_text(full_frozen_text, encoding="utf-8")
+    frozen_sha = hashlib.sha256(prompt_frozen_text.encode()).hexdigest()
+
+    child_env = {
+        "MEMEX_BATCH_FROZEN_INDEX_PATH": str(frozen_path),
+        "MEMEX_BATCH_DELTA_BASE_INDEX_PATH": str(delta_base_path),
+        "MEMEX_BATCH_BASELINE_ALIASES": ",".join(COMPACT_BASELINE_ALIASES),
+    }
+
+    print(
+        "MEMEX batch frozen prefix:",
+        f"path={frozen_path}",
+        f"sha256={frozen_sha}",
+        f"chars={len(prompt_frozen_text)}",
+        f"full_chars={len(full_frozen_text)}",
+        f"baseline_sources={baseline_sources}",
+        f"trails={baseline_trails}",
+        f"compact={'yes' if compact_enabled else 'no'}",
+        flush=True,
+    )
+
+    try:
+        for iteration in range(1, MAX_ITERATIONS + 1):
+            before_rows = read_rows()
+            before = pending_ids(before_rows)
+            if not before:
+                print(f"MEMEX batch complete: steps={processed_steps} pending=0", flush=True)
+                return 0
+            current = next(
+                (row for row in reversed(before_rows) if row.get("status") == "pending"),
+                None,
+            )
+            current_alias = (
+                str(current.get("alias") or "<unknown>")
+                if current
+                else "<unknown>"
+            )
+            print(f"MEMEX batch [{iteration}]: pending={len(before)} next={current_alias}", flush=True)
+            child = run_child(child_env)
+            after = pending_ids()
+            if after == before:
+                print("ERROR: process_queue_once.py made no queue progress; " f"exit={child.returncode} pending={len(after)} next={current_alias}", flush=True)
+                return child.returncode if child.returncode not in (0, None) else 1
+            processed_steps += 1
+            if child.returncode != 0:
+                print("MEMEX batch: child returned non-zero but queue advanced; " f"continuing (exit={child.returncode}, remaining={len(after)})", flush=True)
+        remaining = pending_ids()
+        print(f"ERROR: MEMEX batch iteration limit reached: limit={MAX_ITERATIONS} remaining={len(remaining)}", flush=True)
+        return 3
+    finally:
+        for temp_path in (frozen_path, delta_base_path):
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def main() -> int:
