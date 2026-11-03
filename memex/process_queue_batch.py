@@ -643,6 +643,9 @@ def run_normal_batch() -> int:
         "MEMEX_BATCH_FROZEN_INDEX_PATH": str(frozen_path),
         "MEMEX_BATCH_DELTA_BASE_INDEX_PATH": str(delta_base_path),
         "MEMEX_BATCH_BASELINE_ALIASES": ",".join(COMPACT_BASELINE_ALIASES),
+        # Step 4 owns document-local source-summary creation only.
+        # Corpus-wide Trails / Topics / Entities are handled by Step 5.
+        "MEMEX_SOURCE_SUMMARY_ONLY": "1",
     }
 
     print(

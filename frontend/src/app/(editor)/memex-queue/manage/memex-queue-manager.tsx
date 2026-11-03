@@ -4,6 +4,8 @@ import Link from 'next/link'
 import type { MemexProcessProgress } from '../../../memex-process/process-progress'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { MemexTrailRefreshSections } from './memex-trail-refresh-sections'
+
 
 const SCOPED_RERUN_BATCH_SIZE = 4
 const HISTORY_LIMIT = 50
@@ -1277,7 +1279,7 @@ export const MemexQueueManager = ({
 
       <section style={panelStyle}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
-          <h2 style={{ margin: '0 auto 0 0' }}>4. Pending Queue / Process</h2>
+          <h2 style={{ margin: '0 auto 0 0' }}>4. Summary Creation</h2>
           <button
             type='button'
             style={buttonStyle}
@@ -1297,7 +1299,13 @@ export const MemexQueueManager = ({
           <Link href='/explore/my'>Add Sources</Link>
         </div>
 
-        {/* Inline status in the existing Pending Queue / Process section (no extra panel). */}
+        <p>
+          Creates or updates the derived <code>source-summary</code> for each pending
+          HedgeDoc source. Trail review, Topic/Entity discovery and other
+          corpus-global Wiki work run separately in Step 5.
+        </p>
+
+        {/* Inline status in the existing Summary Creation section (no extra panel). */}
         <div role='status' aria-live='polite' style={{ marginBottom: '12px', lineHeight: 1.75 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: '20px', rowGap: '2px' }}>
             <span><strong>Queue:</strong> {pendingAliases.length.toLocaleString()} pending</span>
@@ -1412,6 +1420,8 @@ export const MemexQueueManager = ({
           </div>
         )}
       </section>
+
+      <MemexTrailRefreshSections />
 
       <section style={panelStyle}>
         <details>

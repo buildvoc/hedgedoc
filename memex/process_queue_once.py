@@ -130,6 +130,10 @@ BATCH_BASELINE_ALIASES = tuple(
     for alias in os.environ.get("MEMEX_BATCH_BASELINE_ALIASES", "").split(",")
     if alias.strip()
 )
+SOURCE_SUMMARY_ONLY = os.environ.get(
+    "MEMEX_SOURCE_SUMMARY_ONLY",
+    "",
+).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def llm_chat(prompt, num_ctx=None, system_prompt=None):
@@ -2651,11 +2655,16 @@ if batch_frozen_index_path:
         f"chars={len(batch_trail_delta)}",
     )
 trail_mode = (
-    "BOOTSTRAP: the current Memex index has no maintained trails. "
-    "Reconstruct strong trails across the supplied corpus."
-    if existing_trail_count == 0
-    else f"MAINTENANCE: preserve and update the {existing_trail_count} "
-         "existing maintained trails."
+    "SUMMARY-ONLY: preserve all maintained trails; Step 5 owns corpus-global "
+    "Trail / Wiki refresh."
+    if SOURCE_SUMMARY_ONLY
+    else (
+        "BOOTSTRAP: the current Memex index has no maintained trails. "
+        "Reconstruct strong trails across the supplied corpus."
+        if existing_trail_count == 0
+        else f"MAINTENANCE: preserve and update the {existing_trail_count} "
+             "existing maintained trails."
+    )
 )
 
 wiki_context, wiki_registry, wiki_context_page_count, wiki_catalogue_count = (
@@ -2668,7 +2677,7 @@ print(
     f"chars={len(wiki_context)}",
 )
 
-if existing_trail_count == 0:
+if existing_trail_count == 0 and not SOURCE_SUMMARY_ONLY:
     bootstrap_docs = []
     for doc in docs:
         summary = doc.get("summary", "").strip()
@@ -3012,6 +3021,68 @@ SOURCE DOCUMENTS:
 {prompt_docs}
 """
 
+    if SOURCE_SUMMARY_ONLY:
+        system_prompt = """
+You are performing Step 4 — Summary Creation for exactly one new or revised
+HedgeDoc source.
+
+Create or update exactly ONE derived page: pageType "source-summary".
+This step is document-local. Do NOT review, create, update, merge, or delete
+Memex Trails. Do NOT create or update Topic, Entity, Comparison, or Synthesis
+pages. Do NOT propose associated_with relationships. Corpus-global Trail and
+Wiki discovery belongs to Step 5.
+
+Return exactly one JSON object with these top-level fields:
+{
+  "summary": "short factual description of this source",
+  "documents": [
+    {"id": 1, "summary": "one concise factual line describing this source"}
+  ],
+  "reviewed_trail_count": 0,
+  "trail_changes": [],
+  "wiki_pages": [
+    {
+      "pageType": "source-summary",
+      "title": "canonical page title",
+      "description": "one-line description",
+      "tags": ["specific-tag"],
+      "body": "complete Markdown body without YAML frontmatter"
+    }
+  ],
+  "associations": []
+}
+
+Source-summary requirements:
+- Produce a meaningful original synthesis, not extracted passages.
+- Use 2-4 thematic ## headings and 5-9 substantive findings when evidence permits.
+- Preserve supported prior source-summary knowledge when its full current page is
+  supplied in CURRENT DERIVED WIKI CONTEXT.
+- Source-page citations are optional; use only verified printed pages from the
+  supplied page map. Never invent page numbers.
+- Do not emit YAML frontmatter. The processor owns derived aliases, provenance,
+  metadata and the Wiki index.
+- Do not create any page type other than source-summary.
+- Return JSON only.
+"""
+        user_prompt = f"""
+STEP 4 — SUMMARY CREATION ONLY
+NEW OR REVISED SOURCE DOCUMENT ID: {queued_doc["id"]}
+
+CURRENT DERIVED WIKI CONTEXT:
+{wiki_context}
+
+NEW OR REVISED SOURCE:
+{queued_text}
+"""
+        print(
+            "MEMEX Step 4 summary-only prompt:",
+            f"source_chars={len(queued_doc['content'])}",
+            f"wiki_context_chars={len(wiki_context)}",
+            "trails_in_prompt=0",
+            "associations=disabled",
+            flush=True,
+        )
+
     print(
         "Memex reviewing NEW SOURCE only:",
         f"document_id={queued_doc['id']}",
@@ -3129,7 +3200,32 @@ MALFORMED JSON:
             )
 
 
-if existing_trail_count == 0 and not result.get("trails"):
+if SOURCE_SUMMARY_ONLY:
+    raw_pages = result.get("wiki_pages")
+    if isinstance(raw_pages, list):
+        result["wiki_pages"] = [
+            page for page in raw_pages
+            if isinstance(page, dict)
+            and str(page.get("pageType", "")).strip() == "source-summary"
+        ][:1]
+    result["reviewed_trail_count"] = 0
+    result["trail_changes"] = []
+    result["associations"] = []
+    result.pop("trails", None)
+    print(
+        "MEMEX Step 4 output guard:",
+        f"source_summary_pages={len(result.get('wiki_pages', []))}",
+        "trail_changes=0",
+        "associations=0",
+        flush=True,
+    )
+
+
+if (
+    not SOURCE_SUMMARY_ONLY
+    and existing_trail_count == 0
+    and not result.get("trails")
+):
     print(
         "No trails returned during bootstrap; retrying trail discovery...",
         f"model={MODEL}",
@@ -3182,6 +3278,16 @@ wiki_mutations = normalize_wiki_mutations_with_repair(
     source_page_map,
     source_text=queued_doc["content"],
 )
+if SOURCE_SUMMARY_ONLY:
+    wiki_mutations = [
+        page for page in wiki_mutations
+        if page.get("pageType") == "source-summary"
+    ]
+    if len(wiki_mutations) != 1:
+        raise ValueError(
+            "Step 4 Summary Creation requires exactly one source-summary mutation"
+        )
+
 print(
     "LLM derived wiki mutations:",
     f"pages={len(wiki_mutations)}",
@@ -3251,7 +3357,14 @@ trail_by_name = {
     for trail in existing_trails
 }
 
-if existing_trail_count == 0:
+if SOURCE_SUMMARY_ONLY:
+    print(
+        "MEMEX Step 4 trail maintenance:",
+        "skipped",
+        f"preserved={len(trail_by_name)}",
+        flush=True,
+    )
+elif existing_trail_count == 0:
     returned_trails = []
     for trail in result.get("trails", []):
         if not isinstance(trail, dict):
