@@ -143,7 +143,10 @@ export default async function MemexIndexPage() {
         >
           <Link href='/memex-index'>Index</Link>
           <Link href='/memex-log'>Log</Link>
+          <Link href='/n/memex-wiki-synthesis-okf-source-navigation-graph'>OKF nodeBook graph (Wiki)</Link>
+          <a href='http://192.168.1.142:8280/n/memex-wiki-synthesis-okf-source-navigation-graph'>Graph in nodeBook</a>
           <Link href='/explore/my?memex=pending'>Process Pending</Link>
+          <Link href='/memex-trail-refresh'>Refresh trails with LLM</Link>
           <MemexRevisionsButton noteAlias='memex-index' />
         </nav>
       </header>
