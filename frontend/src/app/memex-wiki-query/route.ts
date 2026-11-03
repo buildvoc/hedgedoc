@@ -1,3 +1,7 @@
+import { readOkfRelations } from '../memex-okf-topic-entity/_store'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
 import { NextRequest, NextResponse } from 'next/server'
 
 import { readMemexModelSettings } from '../memex-model-settings/_settings'
@@ -239,6 +243,54 @@ const formatHistory = (history: ChatTurn[]): string =>
         .join('\n\n')
     : '(no earlier turns)'
 
+const QUERY_STOP_WORDS = new Set([
+  'a',
+  'about',
+  'an',
+  'and',
+  'are',
+  'be',
+  'do',
+  'does',
+  'for',
+  'from',
+  'how',
+  'in',
+  'is',
+  'me',
+  'of',
+  'on',
+  'or',
+  'tell',
+  'the',
+  'to',
+  'use',
+  'used',
+  'uses',
+  'using',
+  'was',
+  'were',
+  'what',
+  'with',
+])
+
+const tokenizeForRetrieval = (value: string): string[] =>
+  value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+
+const meaningfulTitleTokens = (title: string): string[] =>
+  tokenizeForRetrieval(title).filter(
+    (term) => !QUERY_STOP_WORDS.has(term),
+  )
+
+const titleAcronym = (title: string): string => {
+  const terms = meaningfulTitleTokens(title)
+  if (terms.length < 2) return ''
+  return terms.map((term) => term[0]).join('')
+}
+
 const lexicalFallback = (
   question: string,
   history: ChatTurn[],
@@ -251,32 +303,182 @@ const lexicalFallback = (
 
   const terms = [
     ...new Set(
-      searchText
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((term) => term.length >= 3),
+      tokenizeForRetrieval(searchText).filter(
+        (term) =>
+          term.length >= 3 &&
+          !QUERY_STOP_WORDS.has(term),
+      ),
     ),
   ]
 
   const scored = catalogue
     .map((page) => {
-      const haystack =
-        `${page.title} ${page.description} ${page.pageType} ${page.alias}`.toLowerCase()
-      const score = terms.reduce(
-        (sum, term) => sum + (haystack.includes(term) ? 1 : 0),
+      const titleTokens = new Set(
+        tokenizeForRetrieval(page.title),
+      )
+      const descriptionTokens = new Set(
+        tokenizeForRetrieval(page.description),
+      )
+      const matchedTerms = terms.filter(
+        (term) =>
+          titleTokens.has(term) ||
+          descriptionTokens.has(term),
+      )
+
+      const score = matchedTerms.reduce(
+        (sum, term) =>
+          sum +
+          (titleTokens.has(term) ? 4 : 0) +
+          (descriptionTokens.has(term) ? 2 : 0),
         0,
       )
-      return { alias: page.alias, score }
+
+      return {
+        alias: page.alias,
+        matches: matchedTerms.length,
+        score,
+      }
     })
     .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.alias.localeCompare(b.alias))
+    .sort(
+      (left, right) =>
+        right.matches - left.matches ||
+        right.score - left.score ||
+        left.alias.localeCompare(right.alias),
+    )
+
+  const minimumMatches = terms.length >= 2 ? 2 : 1
+  const qualified = scored.filter(
+    (item) => item.matches >= minimumMatches,
+  )
+  const selected = qualified.length ? qualified : scored
+
+  return selected
     .slice(0, MAX_QUERY_PAGES)
     .map((item) => item.alias)
-
-  return scored.length
-    ? scored
-    : catalogue.slice(0, MAX_QUERY_PAGES).map((page) => page.alias)
 }
+
+type QueryLogStatus = 'answered' | 'no-answer' | 'partial' | 'error'
+
+type WikiQueryLogEvent = {
+  question: string
+  status: QueryLogStatus
+  aliases: string[]
+  llmCalled: boolean
+  summary: string
+  retrieval?: string
+  provider?: string
+  model?: string
+  readOnly?: boolean
+}
+
+const execFileAsync = promisify(execFile)
+
+const QUERY_LOGGER_PATH =
+  process.env.MEMEX_QUERY_LOGGER_PATH ??
+  '/data/projects/hedgedoc/memex/log_query.py'
+
+const QUERY_LOG_PATH =
+  process.env.MEMEX_LOG_PATH ??
+  '/data/projects/hedgedoc/memex/log.md'
+
+const appendWikiQueryLog = async (
+  event: WikiQueryLogEvent,
+): Promise<void> => {
+  if (!event.question.trim()) return
+
+  const args = [
+    QUERY_LOGGER_PATH,
+    '--log',
+    QUERY_LOG_PATH,
+    '--status',
+    event.status,
+    '--answer-file',
+    'no',
+    '--llm-called',
+    event.llmCalled ? 'yes' : 'no',
+    '--via',
+    'memex-wiki-query',
+  ]
+
+  for (const alias of event.aliases) {
+    args.push('--page', alias)
+  }
+
+  if (event.retrieval) args.push('--retrieval', event.retrieval)
+  if (event.provider) args.push('--provider', event.provider)
+  if (event.model) args.push('--model', event.model)
+  if (typeof event.readOnly === 'boolean') {
+    args.push('--read-only', event.readOnly ? 'yes' : 'no')
+  }
+  if (event.summary.trim()) {
+    args.push('--summary', event.summary.slice(0, 1800))
+  }
+
+  args.push('--', event.question)
+
+  try {
+    await execFileAsync('python3', args, {
+      cwd: '/data/projects/hedgedoc',
+      maxBuffer: 1024 * 1024,
+    })
+  } catch (error) {
+    console.error(
+      'Memex wiki query log append failed:',
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+}
+
+
+
+const normalizeLoadedAliases = (
+  value: unknown,
+  requestedAliases: string[],
+): string[] => {
+  if (!Array.isArray(value)) {
+    throw new Error('Conversation response did not report loadedAliases')
+  }
+
+  const requested = new Set(requestedAliases)
+  const loaded = value.flatMap((item) => {
+    if (typeof item !== 'string') return []
+    const alias = item.trim()
+    return requested.has(alias) ? [alias] : []
+  })
+
+  if (loaded.length === 0) {
+    throw new Error('Conversation response reported no loaded wiki evidence')
+  }
+
+  return [...new Set(loaded)]
+}
+
+const loadedAliasesFromStream = (
+  response: Response,
+  requestedAliases: string[],
+): string[] => {
+  const header = response.headers.get('X-Memex-Loaded-Aliases')
+  if (header === null) {
+    throw new Error(
+      'Streaming conversation response did not report loaded wiki evidence',
+    )
+  }
+
+  return normalizeLoadedAliases(
+    header.split(',').map((alias) => alias.trim()).filter(Boolean),
+    requestedAliases,
+  )
+}
+
+const filterReferencePages = (
+  pages: WikiIndexEntry[],
+  loadedAliases: string[],
+): WikiIndexEntry[] => {
+  const loaded = new Set(loadedAliases)
+  return pages.filter((page) => loaded.has(page.alias))
+}
+
 
 const conversation = async (
   payload: Record<string, unknown>,
@@ -359,19 +561,143 @@ Do not append commentary before or after the JSON object.`
   }
 }
 
-const searchWiki = (
+const searchWiki = async (
   question: string,
   history: ChatTurn[],
   catalogue: WikiIndexEntry[],
-): { aliases: string[]; retrieval: 'lexical' } => ({
-  // Wiki Chat deliberately keeps retrieval off llama.cpp. With --parallel 1, an
-  // intermediate retrieval prompt would replace slot 0 immediately before the
-  // answer call and destroy the answer prompt's reusable live KV prefix.
-  aliases: lexicalFallback(question, history, catalogue).sort((left, right) =>
-    left.localeCompare(right),
-  ),
-  retrieval: 'lexical',
-})
+): Promise<{
+  aliases: string[]
+  retrieval:
+    | 'lexical'
+    | 'lexical+okf-relations'
+    | 'concept'
+    | 'concept+okf-relations'
+}> => {
+  // Deterministic, zero-LLM retrieval preserves llama.cpp slot/KV reuse.
+  const lexical = lexicalFallback(question, history, catalogue)
+  const pageByAlias = new Map(
+    catalogue.map((page) => [page.alias, page]),
+  )
+  const query = question.toLowerCase()
+  const queryTokens = new Set(tokenizeForRetrieval(question))
+
+  // Resolve literal concept titles and deterministic acronyms before graph
+  // traversal, e.g. "OKF" -> "Open Knowledge Format".
+  const exact = catalogue
+    .filter((page) => {
+      if (
+        page.pageType !== 'topic' &&
+        page.pageType !== 'entity'
+      ) {
+        return false
+      }
+      if (page.title.length < 5) return false
+
+      const normalizedTitle = page.title.toLowerCase()
+      const acronym = titleAcronym(page.title)
+
+      return (
+        query.includes(normalizedTitle) ||
+        (
+          acronym.length >= 3 &&
+          acronym.length <= 12 &&
+          queryTokens.has(acronym)
+        )
+      )
+    })
+    .map((page) => page.alias)
+
+  const approved =
+    (await readOkfRelations()).document.relations
+
+  const lexicalConceptSeeds = lexical.filter((alias) => {
+    const pageType = pageByAlias.get(alias)?.pageType
+    return pageType === 'entity' || pageType === 'topic'
+  })
+
+  // Exact identity wins. Generic lexical concepts are only seeds when no
+  // literal/acronym identity was resolved.
+  const seeds = exact.length
+    ? exact
+    : lexicalConceptSeeds
+
+  const linked = approved.flatMap((relation) =>
+    seeds.includes(relation.topicAlias)
+      ? [relation.entityAlias]
+      : seeds.includes(relation.entityAlias)
+        ? [relation.topicAlias]
+        : [],
+  )
+
+  // Acronyms are used only to resolve the user query and candidate TITLES.
+  // Generated descriptions may contain generic labels such as "OKF entity",
+  // so acronym matching against descriptions would contaminate retrieval.
+  const conceptMatches = exact.length
+    ? catalogue
+        .filter((candidate) => {
+          const candidateTitleTokens = new Set(
+            tokenizeForRetrieval(candidate.title),
+          )
+          const candidateTokens = new Set(
+            tokenizeForRetrieval(
+              `${candidate.title} ${candidate.description}`,
+            ),
+          )
+
+          return exact.some((exactAlias) => {
+            const exactPage = pageByAlias.get(exactAlias)
+            if (!exactPage) return false
+
+            const conceptTerms =
+              meaningfulTitleTokens(exactPage.title)
+            const acronym = titleAcronym(exactPage.title)
+
+            const acronymTitleMatch =
+              acronym.length >= 3 &&
+              candidateTitleTokens.has(acronym)
+
+            const fullPhraseMatch =
+              conceptTerms.length > 0 &&
+              conceptTerms.every((term) =>
+                candidateTokens.has(term),
+              )
+
+            return acronymTitleMatch || fullPhraseMatch
+          })
+        })
+        .map((candidate) => candidate.alias)
+    : []
+
+  const aliases = [
+    ...new Set(
+      exact.length
+        ? [...exact, ...lexical, ...linked, ...conceptMatches]
+        : [...linked, ...lexical],
+    ),
+  ]
+    .filter((alias) => pageByAlias.has(alias))
+    .slice(0, MAX_QUERY_PAGES)
+
+  if (aliases.length === 0) {
+    throw new Error(
+      'No relevant maintained wiki pages matched this query',
+    )
+  }
+
+  const retrieval =
+    exact.length > 0
+      ? linked.length > 0
+        ? 'concept+okf-relations'
+        : 'concept'
+      : linked.length > 0
+        ? 'lexical+okf-relations'
+        : 'lexical'
+
+  return {
+    aliases,
+    retrieval,
+  }
+}
 
 const formatInstruction = (format: OutputFormat): string => {
   switch (format) {
@@ -476,6 +802,10 @@ ${citationList}
 const streamQueryResponse = (
   upstream: Response,
   metadata: Record<string, unknown>,
+  logEvent: Omit<
+    WikiQueryLogEvent,
+    'status' | 'summary' | 'llmCalled'
+  >,
 ): Response => {
   if (!upstream.body) throw new Error('Streaming Memex response has no body')
 
@@ -486,6 +816,8 @@ const streamQueryResponse = (
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = source.getReader()
+      let answer = ''
+
       const send = (event: Record<string, unknown>): void => {
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
       }
@@ -498,18 +830,38 @@ const streamQueryResponse = (
           if (done) break
 
           const delta = decoder.decode(value, { stream: true })
-          if (delta) send({ type: 'delta', delta })
+          if (delta) {
+            answer += delta
+            send({ type: 'delta', delta })
+          }
         }
 
         const tail = decoder.decode()
-        if (tail) send({ type: 'delta', delta: tail })
+        if (tail) {
+          answer += tail
+          send({ type: 'delta', delta: tail })
+        }
+
+        await appendWikiQueryLog({
+          ...logEvent,
+          status: answer.trim() ? 'answered' : 'no-answer',
+          llmCalled: true,
+          summary: answer,
+        })
+
         send({ type: 'done' })
         controller.close()
       } catch (error) {
-        send({
-          type: 'error',
-          error: error instanceof Error ? error.message : String(error),
+        const message = error instanceof Error ? error.message : String(error)
+
+        await appendWikiQueryLog({
+          ...logEvent,
+          status: 'error',
+          llmCalled: true,
+          summary: message,
         })
+
+        send({ type: 'error', error: message })
         controller.close()
       } finally {
         reader.releaseLock()
@@ -663,6 +1015,13 @@ ${sourceList}
 }
 
 export async function POST(request: NextRequest) {
+  let queryForLog = ''
+  let aliasesForLog: string[] = []
+  let retrievalForLog: string | undefined
+  let providerForLog: string | undefined
+  let modelForLog: string | undefined
+  let llmCalledForLog = false
+
   try {
     const body = (await request.json()) as QueryRequest
     const action =
@@ -694,52 +1053,95 @@ export async function POST(request: NextRequest) {
 
     if (action !== 'query') throw new Error('Unsupported query action')
 
+    queryForLog = question
+
     const catalogue = await readCatalogue()
     if (catalogue.length === 0) {
       throw new Error('The maintained Memex wiki catalogue is empty')
     }
 
-    const retrievalResult = searchWiki(question, history, catalogue)
+    const retrievalResult = await searchWiki(question, history, catalogue)
     const aliases = retrievalResult.aliases
+    aliasesForLog = aliases
+    retrievalForLog = retrievalResult.retrieval
 
     const byAlias = new Map(catalogue.map((page) => [page.alias, page]))
-    const pages = await loadReferencePages(
-      aliases.flatMap((alias) => {
-        const page = byAlias.get(alias)
-        return page ? [page] : []
-      }),
-    )
+    const pages = aliases.flatMap((alias) => {
+      const page = byAlias.get(alias)
+      return page ? [page] : []
+    })
 
     const settings = await readMemexModelSettings()
+    modelForLog = settings.defaultModel
+    providerForLog = settings.provider
+
     if (settings.streamChatResponses) {
+      llmCalledForLog = true
       const upstream = await answerQueryStream(question, history, format, aliases)
-      return streamQueryResponse(upstream, {
-        format,
-        aliases,
-        pages,
-        readOnly: true,
-        model: settings.defaultModel,
-        provider: settings.provider,
-        retrieval: retrievalResult.retrieval,
-      })
+      const loadedAliases = loadedAliasesFromStream(upstream, aliases)
+      const loadedPages = filterReferencePages(pages, loadedAliases)
+
+      return streamQueryResponse(
+        upstream,
+        {
+          format,
+          aliases: loadedAliases,
+          pages: loadedPages,
+          readOnly: true,
+          model: settings.defaultModel,
+          provider: settings.provider,
+          retrieval: retrievalResult.retrieval,
+        },
+        {
+          question,
+          aliases: loadedAliases,
+          retrieval: retrievalResult.retrieval,
+          model: settings.defaultModel,
+          provider: settings.provider,
+          readOnly: true,
+        },
+      )
     }
 
+    llmCalledForLog = true
     const result = await answerQuery(question, history, format, aliases)
     const rawAnswer =
       typeof result.answer === 'string'
         ? result.answer
         : 'The query returned no answer.'
-    const answer = stripInlineWikiCitations(rawAnswer, pages)
+    const loadedAliases = normalizeLoadedAliases(
+      result.loadedAliases,
+      aliases,
+    )
+    const loadedPages = filterReferencePages(pages, loadedAliases)
+    const answer = stripInlineWikiCitations(rawAnswer, loadedPages)
+    const responseReadOnly = result.readOnly === true
+    const responseModel =
+      typeof result.model === 'string' ? result.model : settings.defaultModel
+    const responseProvider =
+      typeof result.provider === 'string' ? result.provider : settings.provider
+
+    await appendWikiQueryLog({
+      question,
+      status: answer.trim() ? 'answered' : 'no-answer',
+      aliases: loadedAliases,
+      llmCalled: true,
+      summary: answer,
+      retrieval: retrievalResult.retrieval,
+      provider: responseProvider,
+      model: responseModel,
+      readOnly: responseReadOnly,
+    })
 
     return NextResponse.json(
       {
         answer,
         format,
-        aliases,
-        pages,
-        readOnly: result.readOnly === true,
-        model: result.model,
-        provider: result.provider,
+        aliases: loadedAliases,
+        pages: loadedPages,
+        readOnly: responseReadOnly,
+        model: responseModel,
+        provider: responseProvider,
         retrieval: retrievalResult.retrieval,
       },
       { headers: { 'Cache-Control': 'no-store' } },
@@ -747,6 +1149,21 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Memex wiki query failed'
+
+    if (queryForLog) {
+      await appendWikiQueryLog({
+        question: queryForLog,
+        status: 'error',
+        aliases: aliasesForLog,
+        llmCalled: llmCalledForLog,
+        summary: message,
+        retrieval: retrievalForLog,
+        provider: providerForLog,
+        model: modelForLog,
+        readOnly: true,
+      })
+    }
+
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
