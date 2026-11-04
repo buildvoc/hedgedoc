@@ -23,8 +23,8 @@ const MAX_CONTEXT_PAGES = Math.max(
 const MAX_CONTEXT_CHARS = Math.max(
   8000,
   Math.min(
-    80000,
-    Number(process.env.MEMEX_WIKI_CONVERSATION_MAX_CHARS ?? '36000'),
+    96000,
+    Number(process.env.MEMEX_WIKI_CONVERSATION_MAX_CHARS ?? '96000'),
   ),
 )
 const LLAMACPP_MAX_TOKENS = Math.max(
@@ -1172,6 +1172,7 @@ export async function POST(request: NextRequest) {
     const settings = await readMemexModelSettings()
     const catalogue = await readCatalogue()
     const loadedPages = await loadWikiPages(catalogue, targetAliases)
+    const loadedAliases = loadedPages.map((page) => page.alias)
     const streamAnswer =
       body.readOnly === true &&
       body.stream === true &&
@@ -1194,12 +1195,19 @@ export async function POST(request: NextRequest) {
       : buildPrompt(conversation, catalogue, loadedPages)
 
     if (streamAnswer) {
-      return llmChatStream(
+      const response = await llmChatStream(
         prompt,
         settings,
         kvCacheFamily,
         readOnlyPrompt?.systemPrompt ?? null,
       )
+      const headers = new Headers(response.headers)
+      headers.set('X-Memex-Loaded-Aliases', loadedAliases.join(','))
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      })
     }
 
     const llmResult = await llmChat(
@@ -1219,6 +1227,7 @@ export async function POST(request: NextRequest) {
           answer,
           count: 0,
           pages: [],
+          loadedAliases,
           model: settings.defaultModel,
           provider: settings.provider,
         },

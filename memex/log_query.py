@@ -15,13 +15,30 @@ def main() -> int:
     parser.add_argument("--llm-called", default="yes", choices=["yes", "no"])
     parser.add_argument("--via", default="agent")
     parser.add_argument("--summary", default="")
+    parser.add_argument("--retrieval", default="")
+    parser.add_argument("--provider", default="")
+    parser.add_argument("--model", default="")
+    parser.add_argument("--read-only", default="", choices=["", "yes", "no"])
     args = parser.parse_args()
     query = " ".join(args.query).strip()
     if not query and not sys.stdin.isatty():
         query = sys.stdin.read().strip()
     if not query:
         parser.error("provide query text as arguments or on stdin")
-    stamp = append_query(Path(args.log), query=query, status=args.status, pages=args.page, answer_filed=args.answer_file, llm_called=args.llm_called, via=args.via, summary=args.summary)
+    stamp = append_query(
+        Path(args.log),
+        query=query,
+        status=args.status,
+        pages=args.page,
+        answer_filed=args.answer_file,
+        llm_called=args.llm_called,
+        via=args.via,
+        summary=args.summary,
+        retrieval=args.retrieval,
+        provider=args.provider,
+        model=args.model,
+        read_only=args.read_only,
+    )
     print(f"logged query at {stamp}")
     print("log:", args.log)
     return 0

@@ -17,6 +17,7 @@ import { useTransparentBodyBackground } from '../../hooks/use-transparent-body-b
 import { RendererType } from '../../window-post-message-communicator/rendering-message'
 import type { CommonMarkdownRendererProps, HeightChangeRendererProps } from '../common-markdown-renderer-props'
 import { DocumentTocSidebar } from './document-toc-sidebar'
+import { CriticMarginComments } from './critic-margin-comments'
 import styles from './markdown-document.module.scss'
 import useResizeObserver from '@react-hook/resize-observer'
 import React, { useMemo, useRef, useState } from 'react'
@@ -96,6 +97,7 @@ export const DocumentMarkdownRenderer: React.FC<DocumentMarkdownRendererProps> =
               newlinesAreBreaks={newLinesAreBreaks}
               allowHtml={true}
             />
+            <CriticMarginComments containerRef={rendererRef} refreshKey={markdownContentLines.join('\n')} />
           </div>
         </div>
       </div>

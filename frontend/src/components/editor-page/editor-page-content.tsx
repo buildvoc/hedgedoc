@@ -7,6 +7,7 @@ import { CommunicatorImageLightbox } from '../markdown-renderer/extensions/image
 import { ExtensionEventEmitterProvider } from '../markdown-renderer/hooks/use-extension-event-emitter'
 import { ChangeEditorContentContextProvider } from './change-content-context/codemirror-reference-context'
 import { EditorPane } from './editor-pane/editor-pane'
+import { CriticReviewBridge } from './critic-review/critic-review-bridge'
 import { useComponentsFromAppExtensions } from './editor-pane/hooks/use-components-from-app-extensions'
 import { useNoteAndAppTitle } from './head-meta-properties/use-note-and-app-title'
 import { useScrollState } from './hooks/use-scroll-state'
@@ -94,6 +95,7 @@ export const EditorPageContent: React.FC = () => {
 
   return (
     <ChangeEditorContentContextProvider>
+      <CriticReviewBridge />
       <ExtensionEventEmitterProvider>
         {editorExtensionComponents}
         <CommunicatorImageLightbox />

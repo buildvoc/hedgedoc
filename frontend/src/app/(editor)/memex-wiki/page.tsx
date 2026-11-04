@@ -29,6 +29,7 @@ export default function MemexWikiPage() {
         </p>
         <a href='/memex-wiki/chat'>Open Wiki Chat</a>
       </section>
+      <p style={{ marginTop: '1rem' }}><a href='/n/memex-wiki-synthesis-okf-source-navigation-graph'>OKF index → nodeBook navigation graph</a> · <a href='/memex-index'>Memex Index</a></p>
       <MemexWikiCatalogue />
 
 <MemexWikiConversationPanel />

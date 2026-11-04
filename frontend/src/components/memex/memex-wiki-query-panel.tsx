@@ -402,7 +402,7 @@ export const MemexWikiQueryPanel = ({ standalone = false }: Props) => {
     const response = await fetch('/memex-wiki-query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, retrievalMode: 'okf' }),
     })
     const body = await response.json().catch(() => null)
 
@@ -429,7 +429,7 @@ export const MemexWikiQueryPanel = ({ standalone = false }: Props) => {
     const response = await fetch('/memex-wiki-query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, retrievalMode: 'okf' }),
     })
 
     const contentType = response.headers.get('content-type') ?? ''

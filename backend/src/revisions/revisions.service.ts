@@ -3,6 +3,8 @@
  *
  * SPDX-License-Identifier: AGPL-3.0-only
  */
+import { createHash } from 'node:crypto';
+
 import {
   AuthorshipInfo,
   FieldNameAuthorshipInfo,
@@ -14,12 +16,13 @@ import {
   Revision,
   RevisionTag,
   TableAuthorshipInfo,
+  TableNote,
   TableRevision,
   TableRevisionTag,
   TableUser,
   User,
 } from '@hedgedoc/database';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, PreconditionFailedException } from '@nestjs/common';
 import { Cron, Timeout } from '@nestjs/schedule';
 import { createPatch } from 'diff';
 import { Knex } from 'knex';
@@ -253,6 +256,7 @@ export class RevisionsService {
       .select()
       .where(FieldNameRevision.noteId, noteId)
       .orderBy(FieldNameRevision.createdAt, 'desc')
+      .orderBy(FieldNameRevision.uuid, 'desc')
       .first();
     if (revision === undefined) {
       throw new NotInDBError(
@@ -333,6 +337,7 @@ export class RevisionsService {
     firstRevision: boolean = false,
     transaction?: Knex,
     yjsStateVector?: ArrayBuffer,
+    expectedContentHash?: string,
   ): Promise<void> {
     this.logger.debug(`Creating revision for note '${noteId}'`, 'createRevision');
     if (!transaction) {
@@ -343,11 +348,19 @@ export class RevisionsService {
           firstRevision,
           newTransaction,
           yjsStateVector,
+          expectedContentHash,
         );
       });
       return;
     }
-    await this.innerCreateRevision(noteId, newContent, firstRevision, transaction, yjsStateVector);
+    await this.innerCreateRevision(
+      noteId,
+      newContent,
+      firstRevision,
+      transaction,
+      yjsStateVector,
+      expectedContentHash,
+    );
   }
 
   /**
@@ -366,8 +379,32 @@ export class RevisionsService {
     firstRevision: boolean,
     transaction: Knex,
     yjsStateVector?: ArrayBuffer,
+    expectedContentHash?: string,
   ): Promise<void> {
+    // Serialize all revision writers before reading the latest revision.
+    // SQLite has no row-level FOR UPDATE: acquire its writer lock first.
+    const isSqlite = transaction.client.config.client === 'better-sqlite3';
+    if (isSqlite) {
+      await transaction(TableNote)
+        .where(FieldNameNote.id, noteId)
+        .update({ [FieldNameNote.version]: transaction.raw('??', [FieldNameNote.version]) } as any);
+    }
+    const noteQuery = transaction(TableNote)
+      .select(FieldNameNote.id)
+      .where(FieldNameNote.id, noteId);
+    if (!isSqlite) noteQuery.forUpdate();
+    const note = await noteQuery.first();
+    if (note === undefined) throw new NotInDBError('Note not found for revision update');
+
     const latestRevision = firstRevision ? null : await this.getLatestRevision(noteId, transaction);
+    if (expectedContentHash !== undefined) {
+      const actualHash = createHash('sha256')
+        .update((latestRevision?.content ?? '').trim(), 'utf8')
+        .digest('hex');
+      if (firstRevision || actualHash !== expectedContentHash.toLowerCase()) {
+        throw new PreconditionFailedException('Note changed since the expected content hash');
+      }
+    }
     const oldContent = latestRevision?.content;
     if (oldContent === newContent) {
       this.logger.debug('There is no difference between old and new content.');

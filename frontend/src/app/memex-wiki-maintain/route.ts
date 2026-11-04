@@ -249,7 +249,7 @@ const fetchNote = async (
     if (response.status === 429) {
       const retryAfter = response.headers.get('retry-after')
       const seconds = retryAfter === null ? NaN : Number(retryAfter)
-      if (attempt === 0 && Number.isFinite(seconds) && seconds >= 0 && seconds <= 2) {
+      if (attempt === 0 && Number.isFinite(seconds) && seconds >= 0 && seconds <= 30) {
         await new Promise<void>((resolve) => setTimeout(resolve, seconds * 1000 + 250))
         continue
       }

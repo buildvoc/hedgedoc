@@ -75,7 +75,21 @@ def append_event(log_path: Path, event: str, subject: str, fields: Sequence[tupl
         os.close(fd)
     return stamp
 
-def append_query(log_path: Path, *, query: str, status: str = "answered", pages: Iterable[str] = (), answer_filed: str = "no", llm_called: str = "yes", via: str = "agent", summary: str = "") -> str:
+def append_query(
+    log_path: Path,
+    *,
+    query: str,
+    status: str = "answered",
+    pages: Iterable[str] = (),
+    answer_filed: str = "no",
+    llm_called: str = "yes",
+    via: str = "agent",
+    summary: str = "",
+    retrieval: str = "",
+    provider: str = "",
+    model: str = "",
+    read_only: str = "",
+) -> str:
     clean_query = _one_line(query, 2000)
     page_list = [_one_line(page, 300) for page in pages if _one_line(page, 300)]
     subject = _one_line(clean_query, 120) or "(empty query)"
@@ -87,6 +101,10 @@ def append_query(log_path: Path, *, query: str, status: str = "answered", pages:
         ("answer filed", answer_filed),
         ("LLM called", llm_called),
         ("via", via),
+        ("retrieval", retrieval or None),
+        ("provider", provider or None),
+        ("model", model or None),
+        ("read only", read_only or None),
         ("summary", summary or None),
     ]
     return append_event(log_path, "query", subject, fields)

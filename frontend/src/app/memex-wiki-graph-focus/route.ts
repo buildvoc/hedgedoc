@@ -1,3 +1,4 @@
+import { readOkfRelations } from '../memex-okf-topic-entity/_store'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { NextRequest, NextResponse } from 'next/server'
@@ -154,6 +155,21 @@ const resolveEntityViaTopic = async (
   entityAliases: string[],
 ): Promise<ResolvedFocus> => {
   const entities = await Promise.all(entityAliases.map(readWikiPage))
+  // Approved navigation wins over inferred source/text overlap.
+  const approved = (await readOkfRelations()).document.relations
+    .filter((r) => entityAliases.includes(r.entityAlias))
+  if (approved.length) {
+    const topicAliases = unique(approved.map((r) => r.topicAlias))
+    const topics = await Promise.all(topicAliases.map(readWikiPage))
+    return {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      mode: 'entity-topic',
+      topicAliases,
+      entityAliases,
+      sourceAliases: unique(topics.flatMap((page) => page.sources)),
+    }
+  }
   const entitySources = new Set(entities.flatMap((page) => page.sources))
   const entityNeedles = entities
     .flatMap((page) => [page.alias, page.title])

@@ -13,10 +13,12 @@ import {
   RevisionSchema,
 } from '@hedgedoc/commons';
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Post,
   Put,
@@ -155,9 +157,13 @@ export class NotesController {
     @RequestUserId() userId: number,
     @RequestNoteId() noteId: number,
     @MarkdownBody() text: string,
+    @Headers('x-expected-content-sha256') expectedHash?: string,
   ): Promise<NoteDto> {
     this.logger.debug('Got raw markdown: ' + text, 'updateNote');
-    await this.noteService.updateNote(noteId, text);
+    if (expectedHash !== undefined && !/^[a-f0-9]{64}$/i.test(expectedHash)) {
+      throw new BadRequestException('Invalid X-Expected-Content-Sha256 header');
+    }
+    await this.noteService.updateNote(noteId, text, expectedHash);
     return await this.noteService.toNoteDto(noteId);
   }
 

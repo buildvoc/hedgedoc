@@ -116,7 +116,18 @@ export function getMaxLimitByRequestWithSecurityConfig(
  * @param context The rate limiter context containing data about the current request
  * @returns The fastify error response
  */
-export function buildRateLimitResponse(_: FastifyRequest, context: errorResponseBuilderContext) {
+export function buildRateLimitResponse(request: FastifyRequest, context: errorResponseBuilderContext) {
+  request.log.warn(
+    {
+      method: request.method,
+      url: request.url,
+      route: request.routeOptions?.url ?? null,
+      ip: request.ip,
+      key: generateRateLimitKey(request),
+    },
+    'MEMEX_RATE_LIMIT_429',
+  );
+
   return {
     statusCode: 429,
     error: 'Too Many Requests',

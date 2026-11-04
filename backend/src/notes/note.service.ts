@@ -258,10 +258,21 @@ sources: []
    * @param noteContent the new content
    * @throws NotInDBError if there is no note with this id or aliases
    */
-  async updateNote(noteId: number, noteContent: string): Promise<void> {
+  async updateNote(noteId: number, noteContent: string, expectedContentHash?: string): Promise<void> {
     this.logger.debug(`Updating note content for note '${noteId}': ${noteContent}`, 'updateNote');
     this.eventEmitter.emit(NoteEvent.CLOSE_REALTIME, noteId);
-    await this.revisionsService.createRevision(noteId, noteContent);
+    if (expectedContentHash === undefined) {
+      await this.revisionsService.createRevision(noteId, noteContent);
+    } else {
+      await this.revisionsService.createRevision(
+        noteId,
+        noteContent,
+        false,
+        undefined,
+        undefined,
+        expectedContentHash,
+      );
+    }
   }
 
   /**
